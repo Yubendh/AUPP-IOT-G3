@@ -15,7 +15,7 @@ CHAT_ID = "-1003317505805"
 URL_SEND = "https://api.telegram.org/bot{}/sendMessage".format(BOT_TOKEN)
 URL_GET_UPDATES = "https://api.telegram.org/bot{}/getUpdates".format(BOT_TOKEN)
 
-# ---------- DHT22 ----------
+# ---------- DHT11 ----------
 DHT_PIN = 4 
 sensor = dht.DHT11(Pin(DHT_PIN, Pin.PULL_UP))
 
