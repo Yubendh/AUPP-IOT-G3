@@ -11,7 +11,7 @@ Instruction: implement send_-message() and post a test message
 
 ## Task 3 - Bot Command
 ![task3](<Screenshot 2026-01-22 at 12.49.11.png>)
-Instruction: implement /staus, /on and /off to control relay
+Instruction: implement /stausls -a, /on and /off to control relay
 
 ## Task 4 - Bot Command
 https://youtube.com/shorts/tThgQg_TyRg
@@ -23,3 +23,8 @@ Auto Wi-Fi reconnect is handled by ensure_wifi() and called before all network a
 Telegram HTTP errors are detected using status_code, printed, and safely skipped.
 
 DHT OSError is caught using try–except, preventing program crashes.
+
+## Task 6 - Document 
+
+Main Loop Flowchart
+![task6](flowchart.png)
