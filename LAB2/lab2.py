@@ -4,10 +4,6 @@ import network
 import socket
 import time
 import dht
-
-# ==============================
-# PIN SETUP
-# ==============================
 LED = Pin(2, Pin.OUT)
 LED.off()
 led_state = False
@@ -22,15 +18,13 @@ I2C_ADDR = 0x27
 i2c = SoftI2C(sda=Pin(21), scl=Pin(22), freq=400000)
 lcd = I2cLcd(i2c, I2C_ADDR, 2, 16)
 lcd.clear()
-
-# ==============================
-# WIFI SETUP
-# ==============================
 ssid = "Robotic WIFI"
 password = "rbtWIFI@2025"
 
 wifi = network.WLAN(network.STA_IF)
 wifi.active(True)
+
+ip_printed = False
 
 def reset_wifi():
 	try:
@@ -41,8 +35,12 @@ def reset_wifi():
 		pass
 
 def ensure_wifi():
+	global ip_printed
 	try:
 		if wifi.isconnected():
+			if not ip_printed:
+				print("ESP32 IP address:", wifi.ifconfig()[0])
+				ip_printed = True
 			return True
 	except OSError:
 		print("WiFi state error, resetting...")
@@ -65,6 +63,7 @@ def ensure_wifi():
 			if wifi.isconnected():
 				print("Connected!")
 				print("ESP32 IP address:", wifi.ifconfig()[0])
+				ip_printed = True
 				return True
 		except OSError:
 			print("WiFi state error, resetting...")
@@ -74,10 +73,6 @@ def ensure_wifi():
 	return False
 
 ensure_wifi()
-
-# ==============================
-# SENSOR FUNCTIONS
-# ==============================
 def get_distance_cm():
 	TRIG.value(0)
 	time.sleep_us(2)
@@ -100,9 +95,6 @@ def read_temperature_humidity():
 	except Exception:
 		return None, None
 
-# ==============================
-# LCD FUNCTIONS
-# ==============================
 def lcd_write_line(line, text):
 	if text is None:
 		text = ""
@@ -132,9 +124,6 @@ def lcd_clear_all():
 	lcd_write_line(0, "")
 	lcd_write_line(1, "")
 
-# ==============================
-# WEB SERVER SETUP
-# ==============================
 addr = socket.getaddrinfo("0.0.0.0", 80)[0][-1]
 s = socket.socket()
 try:
@@ -157,10 +146,6 @@ except OSError:
 s.listen(1)
 
 print("Web server running...")
-
-# ==============================
-# HELPERS
-# ==============================
 def url_decode(value):
 	value = value.replace("+", " ")
 	result = ""
@@ -197,9 +182,6 @@ def get_query_param(qs, name):
 				return url_decode(value)
 	return ""
 
-# ==============================
-# HTML PAGE
-# ==============================
 def web_page(state, temp, hum, dist, last_text):
 	if state:
 		color = "green"
@@ -252,9 +234,6 @@ def web_page(state, temp, hum, dist, last_text):
 	"""
 	return html
 
-# ==============================
-# MAIN LOOP
-# ==============================
 last_temp = None
 last_hum = None
 last_dist = None
