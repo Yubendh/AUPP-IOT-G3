@@ -10,8 +10,8 @@
 
 ![task1](task1.jpg)
 
-# 0 means nothing detected
-# 1 means detected
+    - 0 means nothing detected
+    - 1 means detected
 
 # Task 2 - Servo Motor Control Via Bylnk
 
