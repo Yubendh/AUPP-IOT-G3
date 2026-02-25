@@ -1,0 +1,15 @@
+# Ignore local/system artifacts
+.DS_Store
+Thumbs.db
+
+# Python/MicroPython cache
+__pycache__/
+*.pyc
+
+# Local secrets and runtime outputs
+firmware/config/secrets.json
+firmware/storage/logs/*
+!firmware/storage/logs/.gitkeep
+
+# IDE artifacts
+.vscode/*.log
