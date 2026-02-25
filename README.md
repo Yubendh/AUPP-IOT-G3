@@ -14,3 +14,12 @@ Small, modular firmware structure for ESP32 + MicroPython.
 - `firmware/services/telegram_service.py`: consumes outputs from `main.py` and sends bot requests back to `main.py`.
 - `firmware/services/blynk_service.py`: consumes outputs from `main.py` and sends app requests back to `main.py`.
 - `firmware/storage/runtime_state.json`: persisted mini runtime state.
+- `firmware/tests/esp32_smoke_test.py`: on-device validation of `main.py` outputs and command handling.
+
+## ESP32 Test Flow (Every Feature Step)
+
+1. Upload updated files to ESP32.
+2. Run:
+   - `from tests.esp32_smoke_test import run`
+   - `run()`
+3. Confirm `PASS` before moving to the next feature.
