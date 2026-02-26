@@ -1,14 +1,5 @@
 # Quick config: small centralized settings file for fast edits without navigating multiple modules.
 
-IR_SLOT_PINS = {
-    "slot_1": 12,
-    "slot_2": 13,
-    "slot_3": 14,
-}
-
-# Based on your IR module behavior: 0 means obstacle/vehicle detected.
-IR_OCCUPIED_VALUE = 0
-
 # On-device smoke-test settings.
 TEST_SAMPLE_COUNT = 10
 TEST_SAMPLE_DELAY_MS = 200

@@ -1,39 +1,12 @@
-# Main controller: owns core functions, system state, and outputs consumed by external service modules.
+# Main controller: Telegram-focused command and status interface.
 
-from machine import Pin
 import time
-
-from config import IR_OCCUPIED_VALUE, IR_SLOT_PINS
-
-
-IR_SENSORS = {
-    slot_name: Pin(pin_number, Pin.IN)
-    for slot_name, pin_number in IR_SLOT_PINS.items()
-}
-
-
-def read_slot_state():
-    slots = {}
-    available_slots = 0
-
-    for slot_name, sensor in IR_SENSORS.items():
-        is_occupied = sensor.value() == IR_OCCUPIED_VALUE
-        slots[slot_name] = "occupied" if is_occupied else "free"
-        if not is_occupied:
-            available_slots += 1
-
-    slots["available_slots"] = available_slots
-    return slots
 
 
 def get_system_output():
-    """Return a normalized snapshot for external service modules."""
-    slot_state = read_slot_state()
+    """Return a minimal system snapshot for Telegram responses."""
     return {
-        "slot_1": slot_state["slot_1"],
-        "slot_2": slot_state["slot_2"],
-        "slot_3": slot_state["slot_3"],
-        "available_slots": slot_state["available_slots"],
+        "service": "telegram_bot",
         "system_status": "running",
         "last_update": time.ticks_ms(),
     }
@@ -58,6 +31,60 @@ def handle_command(command, source="unknown", params=None):
             "source": source,
             "command": command,
             "data": get_system_output(),
+        }
+
+    if command == "open_gate":
+        return {
+            "ok": True,
+            "source": source,
+            "command": command,
+            "message": "CHECK: gate open command received.",
+            "data": {},
+        }
+
+    if command == "close_gate":
+        return {
+            "ok": True,
+            "source": source,
+            "command": command,
+            "message": "CHECK: gate close command received.",
+            "data": {},
+        }
+
+    if command == "get_slots":
+        return {
+            "ok": True,
+            "source": source,
+            "command": command,
+            "message": "CHECK: slot query received.",
+            "data": {"available_slots": "CHECK_ONLY"},
+        }
+
+    if command == "get_temp":
+        return {
+            "ok": True,
+            "source": source,
+            "command": command,
+            "message": "CHECK: temperature query received.",
+            "data": {"temp_c": "CHECK_ONLY"},
+        }
+
+    if command == "light_on":
+        return {
+            "ok": True,
+            "source": source,
+            "command": command,
+            "message": "CHECK: light on command received.",
+            "data": {},
+        }
+
+    if command == "light_off":
+        return {
+            "ok": True,
+            "source": source,
+            "command": command,
+            "message": "CHECK: light off command received.",
+            "data": {},
         }
 
     return {

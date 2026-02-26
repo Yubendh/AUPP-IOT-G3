@@ -60,29 +60,39 @@ def format_status(status_response):
 
     data = status_response.get("data", {})
     return (
-        "Parking Status\n"
-        "slot_1: {slot_1}\n"
-        "slot_2: {slot_2}\n"
-        "slot_3: {slot_3}\n"
-        "available_slots: {available_slots}\n"
+        "System Status\n"
+        "service: {service}\n"
         "system_status: {system_status}"
     ).format(
-        slot_1=data.get("slot_1", "unknown"),
-        slot_2=data.get("slot_2", "unknown"),
-        slot_3=data.get("slot_3", "unknown"),
-        available_slots=data.get("available_slots", "unknown"),
+        service=data.get("service", "unknown"),
         system_status=data.get("system_status", "unknown"),
     )
+
+
+def format_check_response(response):
+    if not response.get("ok"):
+        return "Command failed: {}".format(response.get("error", "unknown_error"))
+    return response.get("message", "CHECK: command acknowledged.")
 
 
 def process_command_text(command_text):
     if command_text == "/status":
         return format_status(handle_command("get_status", source="telegram"))
-    if command_text == "/refresh":
-        return format_status(handle_command("refresh_now", source="telegram"))
+    if command_text == "/open":
+        return format_check_response(handle_command("open_gate", source="telegram"))
+    if command_text == "/close":
+        return format_check_response(handle_command("close_gate", source="telegram"))
+    if command_text == "/slots":
+        return format_check_response(handle_command("get_slots", source="telegram"))
+    if command_text == "/temp":
+        return format_check_response(handle_command("get_temp", source="telegram"))
+    if command_text == "/light_on":
+        return format_check_response(handle_command("light_on", source="telegram"))
+    if command_text == "/light_off":
+        return format_check_response(handle_command("light_off", source="telegram"))
     if command_text == "/test":
         return "Test"
-    return "Unsupported command."
+    return "Unsupported command. Use /status, /open, /close, /slots, /temp, /light_on, /light_off."
 
 
 def poll_updates_once():
