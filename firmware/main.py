@@ -94,3 +94,18 @@ def handle_command(command, source="unknown", params=None):
         "error": "unsupported_command",
         "data": {},
     }
+
+
+def run():
+    """Start Telegram bot loop when main.py is executed directly."""
+    try:
+        from services.telegram_service import run_bot_loop
+    except ImportError:
+        from telegram_service import run_bot_loop
+
+    print("Starting Telegram bot loop...")
+    run_bot_loop()
+
+
+if __name__ == "__main__":
+    run()
