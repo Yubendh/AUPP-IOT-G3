@@ -18,11 +18,6 @@ from main import handle_command
 wifi = network.WLAN(network.STA_IF)
 wifi.active(True)
 
-gate_status = "CLOSED"
-relay_status = "OFF"
-slot_statuses = ["FULL", "OPEN", "FULL", "FULL", "FULL"]
-
-
 def ensure_wifi():
     if wifi.isconnected():
         return True
@@ -36,34 +31,15 @@ def ensure_wifi():
 
 
 def get_temperature():
-    response = handle_command("get_temp", source="web")
-    if response.get("ok"):
-        data = response.get("data", {})
-        return data.get("temp_c", response.get("message", "CHECK_ONLY"))
-    return "N/A"
+    status = get_dashboard_state()
+    return status.get("temp_c", "N/A")
 
 
-def sync_state_from_command(command_name):
-    global gate_status, relay_status, slot_statuses
-
-    response = handle_command(command_name, source="web")
+def get_dashboard_state():
+    response = handle_command("get_status", source="web")
     if not response.get("ok"):
-        return response
-
-    if command_name == "open_gate":
-        gate_status = "OPEN"
-    elif command_name == "close_gate":
-        gate_status = "CLOSED"
-    elif command_name == "light_on":
-        relay_status = "ON"
-    elif command_name == "light_off":
-        relay_status = "OFF"
-    elif command_name == "get_slots":
-        slots = response.get("data", {}).get("slots")
-        if isinstance(slots, list) and slots:
-            slot_statuses = slots
-
-    return response
+        return {}
+    return response.get("data", {})
 
 
 def slot_class(status):
@@ -73,10 +49,18 @@ def slot_class(status):
 
 
 def webpage(temp):
-    available = 0
-    for status in slot_statuses:
-        if status == "OPEN":
-            available += 1
+    dashboard = get_dashboard_state()
+    slot_statuses = dashboard.get("slot_statuses", [])
+    gate_status = dashboard.get("gate_status", "UNKNOWN")
+    relay_status = dashboard.get("relay_status", "DISABLED")
+    humidity = dashboard.get("humidity_pct", "N/A")
+    available = dashboard.get("available_slots")
+
+    if available is None:
+        available = 0
+        for status in slot_statuses:
+            if status == "OPEN":
+                available += 1
 
     slot_cards = []
     for index, status in enumerate(slot_statuses):
@@ -209,6 +193,11 @@ h1 {{
     </div>
 
     <div class="card">
+        <h3>Humidity Status</h3>
+        <h2>{humidity} %</h2>
+    </div>
+
+    <div class="card">
         <h3>Gate Status</h3>
         <h2>{gate_status}</h2>
     </div>
@@ -237,6 +226,7 @@ Available Parking Slot : {available}
 </body>
 </html>""".format(
         temp=temp,
+        humidity=humidity,
         gate_status=gate_status,
         relay_status=relay_status,
         available=available,
@@ -246,15 +236,14 @@ Available Parking Slot : {available}
 
 def handle_request(request_text):
     if "GET /open " in request_text:
-        sync_state_from_command("open_gate")
+        handle_command("open_gate", source="web")
     elif "GET /close " in request_text:
-        sync_state_from_command("close_gate")
+        handle_command("close_gate", source="web")
     elif "GET /light_on " in request_text:
-        sync_state_from_command("light_on")
+        handle_command("light_on", source="web")
     elif "GET /light_off " in request_text:
-        sync_state_from_command("light_off")
+        handle_command("light_off", source="web")
 
-    sync_state_from_command("get_slots")
     return webpage(get_temperature())
 
 

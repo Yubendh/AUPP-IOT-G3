@@ -64,12 +64,18 @@ def format_status(status_response):
         "service: {service}\n"
         "system_status: {system_status}\n"
         "gate_status: {gate_status}\n"
-        "gate_angle: {gate_angle}"
+        "gate_angle: {gate_angle}\n"
+        "slots: {available_slots}\n"
+        "temp: {temp_c} C\n"
+        "humidity: {humidity_pct} %"
     ).format(
         service=data.get("service", "unknown"),
         system_status=data.get("system_status", "unknown"),
         gate_status=data.get("gate_status", "unknown"),
         gate_angle=data.get("gate_angle", "unknown"),
+        available_slots=data.get("available_slots", "unknown"),
+        temp_c=data.get("temp_c", "unknown"),
+        humidity_pct=data.get("humidity_pct", "unknown"),
     )
 
 
@@ -77,6 +83,28 @@ def format_check_response(response):
     if not response.get("ok"):
         return "Command failed: {}".format(response.get("error", "unknown_error"))
     return response.get("message", "CHECK: command acknowledged.")
+
+
+def format_slots_response(response):
+    if not response.get("ok"):
+        return "Command failed: {}".format(response.get("error", "unknown_error"))
+
+    data = response.get("data", {})
+    return "Available slots: {}\nSlots: {}".format(
+        data.get("available_slots", "unknown"),
+        ", ".join(data.get("slots", [])),
+    )
+
+
+def format_temperature_response(response):
+    if not response.get("ok"):
+        return "Command failed: {}".format(response.get("error", "unknown_error"))
+
+    data = response.get("data", {})
+    return "Temperature: {} C\nHumidity: {} %".format(
+        data.get("temp_c", "unknown"),
+        data.get("humidity_pct", "unknown"),
+    )
 
 
 def parse_angle_command(command_text, command_prefix):
@@ -110,9 +138,9 @@ def process_command_text(command_text):
         return format_check_response(handle_command("close_gate", source="telegram", params=close_params))
 
     if command_text == "/slots":
-        return format_check_response(handle_command("get_slots", source="telegram"))
+        return format_slots_response(handle_command("get_slots", source="telegram"))
     if command_text == "/temp":
-        return format_check_response(handle_command("get_temp", source="telegram"))
+        return format_temperature_response(handle_command("get_temp", source="telegram"))
     if command_text == "/light_on":
         return format_check_response(handle_command("light_on", source="telegram"))
     if command_text == "/light_off":

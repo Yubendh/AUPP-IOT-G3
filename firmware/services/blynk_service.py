@@ -93,7 +93,7 @@ def get_available_slots_value():
     data = response.get("data", {})
     available_slots = data.get("available_slots")
     if isinstance(available_slots, int):
-        return max(0, min(5, available_slots))
+        return max(0, min(4, available_slots))
 
     slots = data.get("slots")
     if isinstance(slots, list):
@@ -101,7 +101,7 @@ def get_available_slots_value():
         for status in slots:
             if status == "OPEN":
                 available += 1
-        return max(0, min(5, available))
+        return max(0, min(4, available))
 
     return None
 
