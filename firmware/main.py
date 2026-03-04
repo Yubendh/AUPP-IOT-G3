@@ -5,12 +5,64 @@ try:
     import _thread
 except ImportError:
     _thread = None
+try:
+    import machine
+except ImportError:
+    machine = None
 
 from config import (
     ENABLE_BLYNK_SERVICE,
     ENABLE_TELEGRAM_SERVICE,
     ENABLE_WEBSERVER_SERVICE,
+    SERVO_CLOSE_ANGLE,
+    SERVO_FREQ,
+    SERVO_OPEN_ANGLE,
+    SERVO_PIN,
 )
+
+gate_status = "CLOSED"
+gate_angle = SERVO_CLOSE_ANGLE
+servo = None
+
+
+def get_servo():
+    global servo
+
+    if servo is not None:
+        return servo
+
+    if machine is None:
+        return None
+
+    servo = machine.PWM(machine.Pin(SERVO_PIN), freq=SERVO_FREQ)
+    return servo
+
+
+def clamp_angle(angle):
+    return max(0, min(180, int(angle)))
+
+
+def angle_to_duty(angle):
+    angle = clamp_angle(angle)
+    return int(26 + (angle / 180) * 102)
+
+
+def set_gate_position(target_angle, label, source):
+    global gate_status, gate_angle
+
+    bounded_angle = clamp_angle(target_angle)
+    servo_motor = get_servo()
+    if servo_motor is None:
+        print("Servo debug [{}]: hardware unavailable, requested {} at {} degrees".format(source, label, bounded_angle))
+        gate_status = label
+        gate_angle = bounded_angle
+        return False
+
+    servo_motor.duty(angle_to_duty(bounded_angle))
+    gate_status = label
+    gate_angle = bounded_angle
+    print("Servo debug [{}]: {} gate to {} degrees".format(source, label.lower(), bounded_angle))
+    return True
 
 
 def get_system_output():
@@ -18,6 +70,8 @@ def get_system_output():
     return {
         "service": "telegram_bot",
         "system_status": "running",
+        "gate_status": gate_status,
+        "gate_angle": gate_angle,
         "last_update": time.ticks_ms(),
     }
 
@@ -44,21 +98,31 @@ def handle_command(command, source="unknown", params=None):
         }
 
     if command == "open_gate":
+        angle = params.get("angle", SERVO_OPEN_ANGLE)
+        servo_ok = set_gate_position(angle, "OPEN", source)
         return {
-            "ok": True,
+            "ok": servo_ok or machine is None,
             "source": source,
             "command": command,
-            "message": "CHECK: gate open command received.",
-            "data": {},
+            "message": "Gate open command set to {} degrees.".format(clamp_angle(angle)),
+            "data": {
+                "gate_status": gate_status,
+                "servo_angle": gate_angle,
+            },
         }
 
     if command == "close_gate":
+        angle = params.get("angle", SERVO_CLOSE_ANGLE)
+        servo_ok = set_gate_position(angle, "CLOSED", source)
         return {
-            "ok": True,
+            "ok": servo_ok or machine is None,
             "source": source,
             "command": command,
-            "message": "CHECK: gate close command received.",
-            "data": {},
+            "message": "Gate close command set to {} degrees.".format(clamp_angle(angle)),
+            "data": {
+                "gate_status": gate_status,
+                "servo_angle": gate_angle,
+            },
         }
 
     if command == "get_slots":

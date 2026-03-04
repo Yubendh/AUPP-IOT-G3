@@ -62,10 +62,14 @@ def format_status(status_response):
     return (
         "System Status\n"
         "service: {service}\n"
-        "system_status: {system_status}"
+        "system_status: {system_status}\n"
+        "gate_status: {gate_status}\n"
+        "gate_angle: {gate_angle}"
     ).format(
         service=data.get("service", "unknown"),
         system_status=data.get("system_status", "unknown"),
+        gate_status=data.get("gate_status", "unknown"),
+        gate_angle=data.get("gate_angle", "unknown"),
     )
 
 
@@ -75,13 +79,36 @@ def format_check_response(response):
     return response.get("message", "CHECK: command acknowledged.")
 
 
+def parse_angle_command(command_text, command_prefix):
+    if command_text == command_prefix:
+        return {}
+
+    prefix_with_space = command_prefix + " "
+    if not command_text.startswith(prefix_with_space):
+        return None
+
+    try:
+        return {"angle": int(command_text[len(prefix_with_space):].strip())}
+    except ValueError:
+        return "invalid_angle"
+
+
 def process_command_text(command_text):
     if command_text == "/status":
         return format_status(handle_command("get_status", source="telegram"))
-    if command_text == "/open":
-        return format_check_response(handle_command("open_gate", source="telegram"))
-    if command_text == "/close":
-        return format_check_response(handle_command("close_gate", source="telegram"))
+
+    open_params = parse_angle_command(command_text, "/open")
+    if open_params is not None:
+        if open_params == "invalid_angle":
+            return "Invalid open angle. Use /open or /open <0-180>."
+        return format_check_response(handle_command("open_gate", source="telegram", params=open_params))
+
+    close_params = parse_angle_command(command_text, "/close")
+    if close_params is not None:
+        if close_params == "invalid_angle":
+            return "Invalid close angle. Use /close or /close <0-180>."
+        return format_check_response(handle_command("close_gate", source="telegram", params=close_params))
+
     if command_text == "/slots":
         return format_check_response(handle_command("get_slots", source="telegram"))
     if command_text == "/temp":
@@ -92,7 +119,7 @@ def process_command_text(command_text):
         return format_check_response(handle_command("light_off", source="telegram"))
     if command_text == "/test":
         return "Test"
-    return "Unsupported command. Use /status, /open, /close, /slots, /temp, /light_on, /light_off."
+    return "Unsupported command. Use /status, /open, /open <0-180>, /close, /close <0-180>, /slots, /temp, /light_on, /light_off."
 
 
 def poll_updates_once():

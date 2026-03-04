@@ -118,6 +118,19 @@ def get_temperature_value():
     return None
 
 
+def get_gate_switch_value():
+    response = handle_command("get_status", source="blynk")
+    if not response.get("ok"):
+        return None
+
+    gate_status = response.get("data", {}).get("gate_status")
+    if gate_status == "OPEN":
+        return 1
+    if gate_status == "CLOSED":
+        return 0
+    return None
+
+
 def sync_servo_control():
     global last_servo_value
 
@@ -134,6 +147,13 @@ def sync_servo_control():
 
 
 def sync_dashboard_outputs():
+    global last_servo_value
+
+    gate_switch = get_gate_switch_value()
+    if gate_switch is not None:
+        blynk_update(BLYNK_SERVO_VPIN, gate_switch)
+        last_servo_value = gate_switch
+
     available_slots = get_available_slots_value()
     if available_slots is not None:
         blynk_update(BLYNK_SLOTS_VPIN, available_slots)
