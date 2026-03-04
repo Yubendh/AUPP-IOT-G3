@@ -6,7 +6,11 @@ try:
 except ImportError:
     _thread = None
 
-from config import ENABLE_TELEGRAM_SERVICE, ENABLE_WEBSERVER_SERVICE
+from config import (
+    ENABLE_BLYNK_SERVICE,
+    ENABLE_TELEGRAM_SERVICE,
+    ENABLE_WEBSERVER_SERVICE,
+)
 
 
 def get_system_output():
@@ -112,6 +116,13 @@ def run():
         except ImportError:
             from webserver_service import run_webserver_loop
         service_starters.append(("webserver", run_webserver_loop))
+
+    if ENABLE_BLYNK_SERVICE:
+        try:
+            from services.blynk_service import run_blynk_loop
+        except ImportError:
+            from blynk_service import run_blynk_loop
+        service_starters.append(("blynk", run_blynk_loop))
 
     if ENABLE_TELEGRAM_SERVICE:
         try:
