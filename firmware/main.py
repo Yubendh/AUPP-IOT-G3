@@ -1,6 +1,12 @@
 # Main controller: Telegram-focused command and status interface.
 
 import time
+try:
+    import _thread
+except ImportError:
+    _thread = None
+
+from config import ENABLE_TELEGRAM_SERVICE, ENABLE_WEBSERVER_SERVICE
 
 
 def get_system_output():
@@ -97,14 +103,39 @@ def handle_command(command, source="unknown", params=None):
 
 
 def run():
-    """Start Telegram bot loop when main.py is executed directly."""
-    try:
-        from services.telegram_service import run_bot_loop
-    except ImportError:
-        from telegram_service import run_bot_loop
+    """Start enabled service loops when main.py is executed directly."""
+    service_starters = []
 
-    print("Starting Telegram bot loop...")
-    run_bot_loop()
+    if ENABLE_WEBSERVER_SERVICE:
+        try:
+            from services.webserver_service import run_webserver_loop
+        except ImportError:
+            from webserver_service import run_webserver_loop
+        service_starters.append(("webserver", run_webserver_loop))
+
+    if ENABLE_TELEGRAM_SERVICE:
+        try:
+            from services.telegram_service import run_bot_loop
+        except ImportError:
+            from telegram_service import run_bot_loop
+        service_starters.append(("telegram", run_bot_loop))
+
+    if not service_starters:
+        print("No services enabled.")
+        return
+
+    if len(service_starters) > 1 and _thread is None:
+        print("Threading unavailable; starting only {} service.".format(service_starters[0][0]))
+        service_starters[0][1]()
+        return
+
+    for service_name, service_runner in service_starters[:-1]:
+        print("Starting {} service...".format(service_name))
+        _thread.start_new_thread(service_runner, ())
+
+    service_name, service_runner = service_starters[-1]
+    print("Starting {} service...".format(service_name))
+    service_runner()
 
 
 if __name__ == "__main__":

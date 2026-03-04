@@ -1,80 +1,94 @@
-# Web server service: presents main controller outputs on dashboard endpoints and sends user-triggered requests to main controller actions.
+# Web server service: dashboard + HTTP command routing through main controller.
 
 import network
 import socket
-import machine
-import dht
 import time
 
-# =========================
-# WIFI CONFIG
-# =========================
-ssid = "YOUR_WIFI_NAME"
-password = "YOUR_WIFI_PASSWORD"
+from config import (
+    WEBSERVER_BACKLOG,
+    WEBSERVER_HOST,
+    WEBSERVER_PORT,
+    WIFI_CONNECT_RETRIES,
+    WIFI_PASSWORD,
+    WIFI_SSID,
+)
+from main import handle_command
 
-# =========================
-# HARDWARE SETUP
-# =========================
-servo = machine.PWM(machine.Pin(14), freq=50)
-relay = machine.Pin(26, machine.Pin.OUT)
-dht_sensor = dht.DHT11(machine.Pin(4))
 
-# =========================
-# SYSTEM VARIABLES
-# =========================
-gate_status = "CLOSED"
-relay_status = "OFF"
-
-slot1 = "FULL"
-slot2 = "OPEN"
-slot3 = "FULL"
-slot4 = "FULL"
-slot5 = "FULL"
-
-# =========================
-# WIFI CONNECTION
-# =========================
 wifi = network.WLAN(network.STA_IF)
 wifi.active(True)
-wifi.connect(ssid, password)
 
-print("Connecting to WiFi...")
-while not wifi.isconnected():
-    pass
+gate_status = "CLOSED"
+relay_status = "OFF"
+slot_statuses = ["FULL", "OPEN", "FULL", "FULL", "FULL"]
 
-print("Connected!")
-print("IP Address:", wifi.ifconfig()[0])
 
-# =========================
-# SERVO FUNCTIONS
-# =========================
-def open_gate():
-    global gate_status
-    servo.duty(115)
-    gate_status = "OPEN"
+def ensure_wifi():
+    if wifi.isconnected():
+        return True
 
-def close_gate():
-    global gate_status
-    servo.duty(40)
-    gate_status = "CLOSED"
+    wifi.connect(WIFI_SSID, WIFI_PASSWORD)
+    for _ in range(WIFI_CONNECT_RETRIES):
+        if wifi.isconnected():
+            return True
+        time.sleep(1)
+    return False
 
-# =========================
-# HTML PAGE
-# =========================
+
+def get_temperature():
+    response = handle_command("get_temp", source="web")
+    if response.get("ok"):
+        data = response.get("data", {})
+        return data.get("temp_c", response.get("message", "CHECK_ONLY"))
+    return "N/A"
+
+
+def sync_state_from_command(command_name):
+    global gate_status, relay_status, slot_statuses
+
+    response = handle_command(command_name, source="web")
+    if not response.get("ok"):
+        return response
+
+    if command_name == "open_gate":
+        gate_status = "OPEN"
+    elif command_name == "close_gate":
+        gate_status = "CLOSED"
+    elif command_name == "light_on":
+        relay_status = "ON"
+    elif command_name == "light_off":
+        relay_status = "OFF"
+    elif command_name == "get_slots":
+        slots = response.get("data", {}).get("slots")
+        if isinstance(slots, list) and slots:
+            slot_statuses = slots
+
+    return response
+
+
+def slot_class(status):
+    if status == "OPEN":
+        return "slot open"
+    return "slot full"
+
+
 def webpage(temp):
-
-    slots = [slot1, slot2, slot3, slot4, slot5]
     available = 0
-    for s in slots:
-        if s == "OPEN":
+    for status in slot_statuses:
+        if status == "OPEN":
             available += 1
 
-    def slot_class(status):
-        if status == "OPEN":
-            return "slot open"
-        return "slot full"
+    slot_cards = []
+    for index, status in enumerate(slot_statuses):
+        slot_cards.append(
+            '<div class="{slot_class}"><h3>Slot {slot_number}</h3><h2>{status}</h2></div>'.format(
+                slot_class=slot_class(status),
+                slot_number=index + 1,
+                status=status,
+            )
+        )
 
-    return f"""<!DOCTYPE html>
+    return """<!DOCTYPE html>
 <html>
 <head>
 <title>Smart Parking</title>
@@ -191,7 +205,7 @@ h1 {{
 <div class="top-cards">
     <div class="card">
         <h3>Temperature Status</h3>
-        <h2>{temp}°C</h2>
+        <h2>{temp} C</h2>
     </div>
 
     <div class="card">
@@ -210,11 +224,7 @@ Available Parking Slot : {available}
 </div>
 
 <div class="slots">
-    <div class="{slot_class(slot1)}"><h3>Slot 1</h3><h2>{slot1}</h2></div>
-    <div class="{slot_class(slot2)}"><h3>Slot 2</h3><h2>{slot2}</h2></div>
-    <div class="{slot_class(slot3)}"><h3>Slot 3</h3><h2>{slot3}</h2></div>
-    <div class="{slot_class(slot4)}"><h3>Slot 4</h3><h2>{slot4}</h2></div>
-    <div class="{slot_class(slot5)}"><h3>Slot 5</h3><h2>{slot5}</h2></div>
+    {slot_cards}
 </div>
 
 <div class="control">
@@ -225,38 +235,62 @@ Available Parking Slot : {available}
 
 </div>
 </body>
-</html>"""
-# =========================
-# WEB SERVER
-# =========================
-addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
-server = socket.socket()
-server.bind(addr)
-server.listen(5)
+</html>""".format(
+        temp=temp,
+        gate_status=gate_status,
+        relay_status=relay_status,
+        available=available,
+        slot_cards="".join(slot_cards),
+    )
 
-print("Web server running...")
 
-while True:
-    conn, addr = server.accept()
-    request = conn.recv(1024).decode()
+def handle_request(request_text):
+    if "GET /open " in request_text:
+        sync_state_from_command("open_gate")
+    elif "GET /close " in request_text:
+        sync_state_from_command("close_gate")
+    elif "GET /light_on " in request_text:
+        sync_state_from_command("light_on")
+    elif "GET /light_off " in request_text:
+        sync_state_from_command("light_off")
 
-    # Read temperature
-    try:
-        dht_sensor.measure()
-        temperature = dht_sensor.temperature()
-    except:
-        temperature = 0
+    sync_state_from_command("get_slots")
+    return webpage(get_temperature())
 
-    # Handle button press
-    if '/open' in request:
-        open_gate()
-    if '/close' in request:
-        close_gate()
 
-    response = webpage(temperature)
+def run_webserver_loop():
+    if not ensure_wifi():
+        print("Web server Wi-Fi connection failed.")
+        return
 
-    conn.send("HTTP/1.1 200 OK\n")
-    conn.send("Content-Type: text/html\n")
-    conn.send("Connection: close\n\n")
-    conn.sendall(response)
-    conn.close()
+    addr = socket.getaddrinfo(WEBSERVER_HOST, WEBSERVER_PORT)[0][-1]
+    server = socket.socket()
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(addr)
+    server.listen(WEBSERVER_BACKLOG)
+
+    print("Web server running at http://{}:{}/".format(wifi.ifconfig()[0], WEBSERVER_PORT))
+
+    while True:
+        conn = None
+        try:
+            conn, _ = server.accept()
+            request = conn.recv(1024).decode()
+            response = handle_request(request)
+            conn.send("HTTP/1.1 200 OK\r\n")
+            conn.send("Content-Type: text/html\r\n")
+            conn.send("Connection: close\r\n\r\n")
+            conn.sendall(response)
+        except Exception as exc:
+            print("Web server error:", exc)
+        finally:
+            if conn is not None:
+                conn.close()
+
+
+def run():
+    run_webserver_loop()
+
+
+if __name__ == "__main__":
+    run()
