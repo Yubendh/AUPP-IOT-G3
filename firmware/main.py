@@ -42,6 +42,9 @@ from config import (
     TM1637_CLK_PIN,
     TM1637_DIO_PIN,
     ULTRASONIC_ECHO_PIN,
+    ULTRASONIC_SECOND_ECHO_PIN,
+    ULTRASONIC_SECOND_ENABLED,
+    ULTRASONIC_SECOND_TRIG_PIN,
     ULTRASONIC_TIMEOUT_US,
     ULTRASONIC_TRIG_PIN,
 )
@@ -65,6 +68,8 @@ hardware = {
     "servo": None,
     "trig": None,
     "echo": None,
+    "trig2": None,
+    "echo2": None,
     "slot_pins": [],
     "dht": None,
     "tm1637": None,
@@ -82,6 +87,7 @@ state = {
     "temperature_c": None,
     "humidity_pct": None,
     "entry_distance_cm": None,
+    "entry_distance_cm_secondary": None,
     "entry_detected": False,
     "last_update": 0,
 }
@@ -143,6 +149,16 @@ def initialize_hardware():
 
     if hardware["echo"] is None:
         hardware["echo"] = machine.Pin(ULTRASONIC_ECHO_PIN, machine.Pin.IN)
+
+    if ULTRASONIC_SECOND_ENABLED:
+        if hardware["trig2"] is None:
+            hardware["trig2"] = machine.Pin(ULTRASONIC_SECOND_TRIG_PIN, machine.Pin.OUT)
+            hardware["trig2"].value(0)
+        if hardware["echo2"] is None:
+            if ULTRASONIC_SECOND_ECHO_PIN == ULTRASONIC_SECOND_TRIG_PIN:
+                hardware["echo2"] = hardware["trig2"]
+            else:
+                hardware["echo2"] = machine.Pin(ULTRASONIC_SECOND_ECHO_PIN, machine.Pin.IN)
 
     if not hardware["slot_pins"]:
         slot_mode = machine.Pin.PULL_UP if IR_SENSOR_USE_PULLUP else None
@@ -256,6 +272,45 @@ def read_ultrasonic_distance_cm():
     return (duration * 0.0343) / 2
 
 
+def read_ultrasonic_distance_cm_second():
+    initialize_hardware()
+    trig = hardware["trig2"]
+    echo = hardware["echo2"]
+    if trig is None or echo is None or machine is None or not ULTRASONIC_SECOND_ENABLED:
+        return None
+
+    # Support one-pin mode when TRIG/ECHO share the same GPIO.
+    if ULTRASONIC_SECOND_TRIG_PIN == ULTRASONIC_SECOND_ECHO_PIN:
+        try:
+            trig.init(machine.Pin.OUT)
+            trig.value(0)
+            time.sleep_us(2)
+            trig.value(1)
+            time.sleep_us(10)
+            trig.value(0)
+            trig.init(machine.Pin.IN)
+            duration = machine.time_pulse_us(trig, 1, ULTRASONIC_TIMEOUT_US)
+            trig.init(machine.Pin.OUT)
+            trig.value(0)
+        except OSError:
+            return None
+    else:
+        trig.value(0)
+        time.sleep_us(2)
+        trig.value(1)
+        time.sleep_us(10)
+        trig.value(0)
+        try:
+            duration = machine.time_pulse_us(echo, 1, ULTRASONIC_TIMEOUT_US)
+        except OSError:
+            return None
+
+    if duration < 0:
+        return None
+
+    return (duration * 0.0343) / 2
+
+
 def read_slot_statuses():
     initialize_hardware()
     statuses = []
@@ -307,13 +362,19 @@ def update_state_from_sensors():
 
     temperature, humidity = read_dht_state()
     entry_distance = read_ultrasonic_distance_cm()
-    entry_detected = entry_distance is not None and entry_distance <= ENTRY_DISTANCE_CM
+    entry_distance_secondary = read_ultrasonic_distance_cm_second()
+    primary_detected = entry_distance is not None and entry_distance <= ENTRY_DISTANCE_CM
+    secondary_detected = (
+        entry_distance_secondary is not None and entry_distance_secondary <= ENTRY_DISTANCE_CM
+    )
+    entry_detected = primary_detected or secondary_detected
 
     state["slot_statuses"] = slot_statuses
     state["available_slots"] = available_slots
     state["temperature_c"] = temperature
     state["humidity_pct"] = humidity
     state["entry_distance_cm"] = entry_distance
+    state["entry_distance_cm_secondary"] = entry_distance_secondary
     state["entry_detected"] = entry_detected
 
     if available_slots == 0:
@@ -367,6 +428,7 @@ def get_system_output():
         "temp_c": state["temperature_c"],
         "humidity_pct": state["humidity_pct"],
         "entry_distance_cm": state["entry_distance_cm"],
+        "entry_distance_cm_secondary": state["entry_distance_cm_secondary"],
         "entry_detected": state["entry_detected"],
         "last_update": state["last_update"],
     }
