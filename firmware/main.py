@@ -93,6 +93,13 @@ lcd_override = {
 
 auto_gate_close_deadline = None
 previous_entry_detected = False
+network_lock = None
+
+if _thread is not None:
+    try:
+        network_lock = _thread.allocate_lock()
+    except Exception:
+        network_lock = None
 
 
 def clamp_angle(angle):
@@ -118,6 +125,11 @@ def now_ms():
 def initialize_hardware():
     if machine is None:
         return
+
+    # Slot sensor pins must not overlap I2C pins used by LCD.
+    for slot_pin in IR_SLOT_PINS[:MAX_SLOTS]:
+        if slot_pin in (LCD_SDA_PIN, LCD_SCL_PIN):
+            print("Config warning: IR slot pin {} conflicts with LCD I2C pin.".format(slot_pin))
 
     if hardware["servo"] is None:
         hardware["servo"] = machine.PWM(machine.Pin(SERVO_PIN), freq=SERVO_FREQ)
@@ -187,8 +199,11 @@ def refresh_lcd():
     if lcd is None:
         return
 
+    live_line2 = fit_lcd_text("Slots:{} Gate:{}".format(state["available_slots"], state["gate_status"][0]))
+
     if time.ticks_diff(lcd_override["until_ms"], now_ms()) > 0:
-        render_lcd(lcd_override["line1"], lcd_override["line2"])
+        # Keep slot/gate line live so LCD stays in sync with TM1637 during temporary override banners.
+        render_lcd(lcd_override["line1"], live_line2)
         return
 
     temp = state["temperature_c"]
@@ -198,8 +213,7 @@ def refresh_lcd():
     else:
         line1 = fit_lcd_text("Temp:{}C H:{}%".format(temp, humidity))
 
-    line2 = fit_lcd_text("Slots:{} Gate:{}".format(state["available_slots"], state["gate_status"][0]))
-    render_lcd(line1, line2)
+    render_lcd(line1, live_line2)
 
 
 def refresh_tm1637():

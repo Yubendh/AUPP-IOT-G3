@@ -3,6 +3,9 @@
 import network
 import time
 import urequests
+import gc
+import __main__
+import sys
 
 from config import (
     TELEGRAM_BOT_TOKEN,
@@ -12,7 +15,12 @@ from config import (
     WIFI_PASSWORD,
     WIFI_SSID,
 )
-from main import handle_command
+try:
+    handle_command = __main__.handle_command
+except AttributeError:
+    from main import handle_command
+
+network_lock = getattr(__main__, "network_lock", None)
 
 
 URL_SEND = "https://api.telegram.org/bot{}/sendMessage".format(TELEGRAM_BOT_TOKEN)
@@ -21,15 +29,91 @@ URL_GET_UPDATES = "https://api.telegram.org/bot{}/getUpdates".format(TELEGRAM_BO
 wifi = network.WLAN(network.STA_IF)
 wifi.active(True)
 last_update_id = 0
+poll_backoff_seconds = 0
+last_wifi_log_ms = 0
+last_heartbeat_ms = 0
+updates_initialized = False
+
+
+def now_ms():
+    return time.ticks_ms()
+
+
+def initialize_update_cursor():
+    """Drop old queued Telegram updates so only fresh commands run after boot."""
+    global last_update_id, updates_initialized, poll_backoff_seconds
+
+    if updates_initialized:
+        return True
+
+    if not ensure_wifi():
+        poll_backoff_seconds = min(10, poll_backoff_seconds + 1)
+        return False
+
+    response = None
+    lock_acquired = False
+    try:
+        if network_lock is not None:
+            network_lock.acquire()
+            lock_acquired = True
+
+        # offset=-1 discards backlog and keeps only the newest update cursor.
+        response = urequests.get(
+            "{}?offset=-1&limit=1&allowed_updates=%5B%22message%22%5D".format(URL_GET_UPDATES)
+        )
+        if response.status_code != 200:
+            poll_backoff_seconds = min(10, poll_backoff_seconds + 1)
+            return False
+
+        data = response.json()
+        if not data.get("ok"):
+            poll_backoff_seconds = min(10, poll_backoff_seconds + 1)
+            return False
+
+        for update in data.get("result", []):
+            last_update_id = update.get("update_id", last_update_id)
+
+        updates_initialized = True
+        poll_backoff_seconds = 0
+        print("Telegram cursor initialized at update_id:", last_update_id)
+        return True
+    except Exception as exc:
+        print("Telegram init cursor error:", exc)
+        poll_backoff_seconds = min(10, poll_backoff_seconds + 1)
+        return False
+    finally:
+        if response is not None:
+            response.close()
+        if lock_acquired:
+            network_lock.release()
+        gc.collect()
 
 
 def ensure_wifi():
     if wifi.isconnected():
         return True
 
-    wifi.connect(WIFI_SSID, WIFI_PASSWORD)
+    if not wifi.active():
+        try:
+            wifi.active(True)
+            time.sleep_ms(100)
+        except Exception as exc:
+            print("Telegram Wi-Fi activate error:", exc)
+            return False
+
+    try:
+        wifi.connect(WIFI_SSID, WIFI_PASSWORD)
+    except Exception as exc:
+        print("Telegram Wi-Fi connect error:", exc)
+        return False
+
     for _ in range(WIFI_CONNECT_RETRIES):
         if wifi.isconnected():
+            global last_wifi_log_ms
+            now = now_ms()
+            if time.ticks_diff(now, last_wifi_log_ms) > 30000:
+                print("Telegram Wi-Fi connected:", wifi.ifconfig()[0])
+                last_wifi_log_ms = now
             return True
         time.sleep(1)
     return False
@@ -39,8 +123,13 @@ def send_message(text):
     if not ensure_wifi():
         return False
 
+    gc.collect()
     response = None
+    lock_acquired = False
     try:
+        if network_lock is not None:
+            network_lock.acquire()
+            lock_acquired = True
         response = urequests.post(
             URL_SEND,
             json={"chat_id": TELEGRAM_CHAT_ID, "text": text},
@@ -52,6 +141,8 @@ def send_message(text):
     finally:
         if response is not None:
             response.close()
+        if lock_acquired:
+            network_lock.release()
 
 
 def format_status(status_response):
@@ -151,38 +242,73 @@ def process_command_text(command_text):
 
 
 def poll_updates_once():
-    global last_update_id
+    global last_update_id, poll_backoff_seconds
 
-    if not ensure_wifi():
+    if not initialize_update_cursor():
         return False
 
+    if not ensure_wifi():
+        poll_backoff_seconds = min(10, poll_backoff_seconds + 1)
+        return False
+
+    gc.collect()
     response = None
+    lock_acquired = False
+    updates = []
     try:
-        response = urequests.get("{}?offset={}".format(URL_GET_UPDATES, last_update_id + 1))
+        if network_lock is not None:
+            network_lock.acquire()
+            lock_acquired = True
+        # Keep payload small for low-memory boards.
+        response = urequests.get(
+            "{}?offset={}&limit=1&allowed_updates=%5B%22message%22%5D".format(
+                URL_GET_UPDATES, last_update_id + 1
+            )
+        )
         if response.status_code != 200:
+            poll_backoff_seconds = min(10, poll_backoff_seconds + 1)
             return False
 
         data = response.json()
         if not data.get("ok"):
+            poll_backoff_seconds = min(10, poll_backoff_seconds + 1)
             return False
 
-        for update in data.get("result", []):
+        updates = data.get("result", [])
+        poll_backoff_seconds = 0
+    except Exception as exc:
+        print("Telegram poll error:", exc)
+        poll_backoff_seconds = min(10, poll_backoff_seconds + 1)
+        return False
+    finally:
+        if response is not None:
+            response.close()
+        if lock_acquired:
+            network_lock.release()
+        gc.collect()
+
+    for update in updates:
+        try:
             last_update_id = update.get("update_id", last_update_id)
             message = update.get("message", {})
             text = message.get("text")
             chat_id = str(message.get("chat", {}).get("id", ""))
             if text and chat_id == str(TELEGRAM_CHAT_ID):
+                print("Telegram command:", text)
                 send_message(process_command_text(text))
-        return True
-    except Exception as exc:
-        print("Telegram poll error:", exc)
-        return False
-    finally:
-        if response is not None:
-            response.close()
+        except Exception as exc:
+            print("Telegram command handler error:", exc)
+    return True
 
 
 def run_bot_loop():
+    global last_heartbeat_ms
+    print("Starting Telegram loop...")
     while True:
+        now = now_ms()
+        if time.ticks_diff(now, last_heartbeat_ms) > 30000:
+            print("Telegram loop alive.")
+            last_heartbeat_ms = now
         poll_updates_once()
-        time.sleep(TELEGRAM_POLL_SECONDS)
+        delay = TELEGRAM_POLL_SECONDS + poll_backoff_seconds
+        time.sleep(delay)

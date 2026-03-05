@@ -3,6 +3,9 @@
 import network
 import time
 import urequests
+import gc
+import __main__
+import sys
 
 from config import (
     BLYNK_AUTH_TOKEN,
@@ -15,22 +18,55 @@ from config import (
     WIFI_PASSWORD,
     WIFI_SSID,
 )
-from main import handle_command
+try:
+    handle_command = __main__.handle_command
+except AttributeError:
+    from main import handle_command
+
+network_lock = getattr(__main__, "network_lock", None)
 
 
 wifi = network.WLAN(network.STA_IF)
 wifi.active(True)
 
 last_servo_value = None
+last_slots_value = None
+last_temp_value = None
+last_wifi_log_ms = 0
+last_force_sync_ms = 0
+last_heartbeat_ms = 0
+FORCE_SYNC_INTERVAL_MS = 30000
+
+
+def now_ms():
+    return time.ticks_ms()
 
 
 def ensure_wifi():
     if wifi.isconnected():
         return True
 
-    wifi.connect(WIFI_SSID, WIFI_PASSWORD)
+    if not wifi.active():
+        try:
+            wifi.active(True)
+            time.sleep_ms(100)
+        except Exception as exc:
+            print("Blynk Wi-Fi activate error:", exc)
+            return False
+
+    try:
+        wifi.connect(WIFI_SSID, WIFI_PASSWORD)
+    except Exception as exc:
+        print("Blynk Wi-Fi connect error:", exc)
+        return False
+
     for _ in range(WIFI_CONNECT_RETRIES):
         if wifi.isconnected():
+            global last_wifi_log_ms
+            now = now_ms()
+            if time.ticks_diff(now, last_wifi_log_ms) > 30000:
+                print("Blynk Wi-Fi connected:", wifi.ifconfig()[0])
+                last_wifi_log_ms = now
             return True
         time.sleep(1)
     return False
@@ -40,12 +76,18 @@ def blynk_get(vpin):
     if not ensure_wifi():
         return None
 
+    gc.collect()
     response = None
+    lock_acquired = False
     try:
+        if network_lock is not None:
+            network_lock.acquire()
+            lock_acquired = True
         response = urequests.get(
             "{}/get?token={}&{}".format(BLYNK_BASE_URL, BLYNK_AUTH_TOKEN, vpin)
         )
         if response.status_code != 200:
+            print("Blynk get status:", response.status_code, vpin)
             return None
 
         return str(response.text).strip().strip('[]"{}')
@@ -55,17 +97,26 @@ def blynk_get(vpin):
     finally:
         if response is not None:
             response.close()
+        if lock_acquired:
+            network_lock.release()
 
 
 def blynk_update(vpin, value):
     if not ensure_wifi():
         return False
 
+    gc.collect()
     response = None
+    lock_acquired = False
     try:
+        if network_lock is not None:
+            network_lock.acquire()
+            lock_acquired = True
         response = urequests.get(
             "{}/update?token={}&{}={}".format(BLYNK_BASE_URL, BLYNK_AUTH_TOKEN, vpin, value)
         )
+        if response.status_code != 200:
+            print("Blynk update status:", response.status_code, vpin, value)
         return response.status_code == 200
     except Exception as exc:
         print("Blynk update error:", exc)
@@ -73,6 +124,8 @@ def blynk_update(vpin, value):
     finally:
         if response is not None:
             response.close()
+        if lock_acquired:
+            network_lock.release()
 
 
 def parse_switch_value(value):
@@ -146,32 +199,51 @@ def sync_servo_control():
     last_servo_value = servo_value
 
 
-def sync_dashboard_outputs():
-    global last_servo_value
+def sync_dashboard_outputs(force=False):
+    global last_servo_value, last_slots_value, last_temp_value
 
     gate_switch = get_gate_switch_value()
-    if gate_switch is not None:
-        blynk_update(BLYNK_SERVO_VPIN, gate_switch)
-        last_servo_value = gate_switch
+    if gate_switch is not None and (force or gate_switch != last_servo_value):
+        if blynk_update(BLYNK_SERVO_VPIN, gate_switch):
+            last_servo_value = gate_switch
 
     available_slots = get_available_slots_value()
-    if available_slots is not None:
-        blynk_update(BLYNK_SLOTS_VPIN, available_slots)
+    if available_slots is not None and (force or available_slots != last_slots_value):
+        if blynk_update(BLYNK_SLOTS_VPIN, available_slots):
+            last_slots_value = available_slots
 
     temperature = get_temperature_value()
-    if temperature is not None:
-        blynk_update(BLYNK_TEMPERATURE_VPIN, temperature)
+    if temperature is not None and (force or temperature != last_temp_value):
+        if blynk_update(BLYNK_TEMPERATURE_VPIN, temperature):
+            last_temp_value = temperature
 
 
 def run_blynk_loop():
-    if not ensure_wifi():
-        print("Blynk Wi-Fi connection failed.")
-        return
-
+    global last_force_sync_ms, last_heartbeat_ms
     print("Starting Blynk loop...")
     while True:
-        sync_servo_control()
-        sync_dashboard_outputs()
+        try:
+            if ensure_wifi():
+                now = now_ms()
+                do_force_sync = time.ticks_diff(now, last_force_sync_ms) > FORCE_SYNC_INTERVAL_MS
+                if do_force_sync:
+                    last_force_sync_ms = now
+                sync_servo_control()
+                sync_dashboard_outputs(force=do_force_sync)
+                if time.ticks_diff(now, last_heartbeat_ms) > 30000:
+                    print("Blynk loop alive.")
+                    last_heartbeat_ms = now
+            else:
+                print("Blynk Wi-Fi connection failed.")
+                time.sleep(2)
+        except Exception as exc:
+            print("Blynk loop error:", exc)
+            try:
+                sys.print_exception(exc)
+            except Exception:
+                pass
+            gc.collect()
+            time.sleep(2)
         time.sleep(BLYNK_POLL_SECONDS)
 
 

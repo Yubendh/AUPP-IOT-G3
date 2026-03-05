@@ -3,6 +3,7 @@
 import network
 import socket
 import time
+import __main__
 
 from config import (
     WEBSERVER_BACKLOG,
@@ -12,22 +13,43 @@ from config import (
     WIFI_PASSWORD,
     WIFI_SSID,
 )
-from main import handle_command
+try:
+    handle_command = __main__.handle_command
+except AttributeError:
+    from main import handle_command
 
 
 wifi = network.WLAN(network.STA_IF)
 wifi.active(True)
 
+
 def ensure_wifi():
     if wifi.isconnected():
         return True
 
-    wifi.connect(WIFI_SSID, WIFI_PASSWORD)
+    if not wifi.active():
+        try:
+            wifi.active(True)
+            time.sleep_ms(100)
+        except Exception as exc:
+            print("Web Wi-Fi activate error:", exc)
+            return False
+
+    try:
+        wifi.connect(WIFI_SSID, WIFI_PASSWORD)
+    except Exception as exc:
+        print("Web Wi-Fi connect error:", exc)
+        return False
+
     for _ in range(WIFI_CONNECT_RETRIES):
         if wifi.isconnected():
             return True
         time.sleep(1)
     return False
+
+
+def get_web_url():
+    return "http://{}:{}/".format(wifi.ifconfig()[0], WEBSERVER_PORT)
 
 
 def get_temperature():
@@ -52,7 +74,6 @@ def webpage(temp):
     dashboard = get_dashboard_state()
     slot_statuses = dashboard.get("slot_statuses", [])
     gate_status = dashboard.get("gate_status", "UNKNOWN")
-    relay_status = dashboard.get("relay_status", "DISABLED")
     humidity = dashboard.get("humidity_pct", "N/A")
     available = dashboard.get("available_slots")
 
@@ -202,10 +223,6 @@ h1 {{
         <h2>{gate_status}</h2>
     </div>
 
-    <div class="card">
-        <h3>Relay Status</h3>
-        <h2>{relay_status}</h2>
-    </div>
 </div>
 
 <div class="available">
@@ -228,7 +245,6 @@ Available Parking Slot : {available}
         temp=temp,
         humidity=humidity,
         gate_status=gate_status,
-        relay_status=relay_status,
         available=available,
         slot_cards="".join(slot_cards),
     )
@@ -258,7 +274,8 @@ def run_webserver_loop():
     server.bind(addr)
     server.listen(WEBSERVER_BACKLOG)
 
-    print("Web server running at http://{}:{}/".format(wifi.ifconfig()[0], WEBSERVER_PORT))
+    print("Web server running at {}".format(get_web_url()))
+    print("Website link: {}".format(get_web_url()))
 
     while True:
         conn = None
@@ -271,7 +288,9 @@ def run_webserver_loop():
             conn.send("Connection: close\r\n\r\n")
             conn.sendall(response)
         except Exception as exc:
-            print("Web server error:", exc)
+            err = str(exc)
+            if "ECONNABORTED" not in err and "ENOTCONN" not in err:
+                print("Web server error:", exc)
         finally:
             if conn is not None:
                 conn.close()
