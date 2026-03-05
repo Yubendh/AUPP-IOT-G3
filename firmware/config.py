@@ -29,6 +29,8 @@ ULTRASONIC_TIMEOUT_US = 30000
 # Parking slot quick settings.
 MAX_SLOTS = 4
 IR_SLOT_PINS = (23, 19, 35, 34)
+IR_SENSOR_ACTIVE_LOW = True
+IR_SENSOR_USE_PULLUP = True
 
 # DHT11 quick settings.
 DHT11_PIN = 33

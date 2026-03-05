@@ -23,6 +23,8 @@ from config import (
     ENABLE_TELEGRAM_SERVICE,
     ENABLE_WEBSERVER_SERVICE,
     ENTRY_DISTANCE_CM,
+    IR_SENSOR_ACTIVE_LOW,
+    IR_SENSOR_USE_PULLUP,
     IR_SLOT_PINS,
     LCD_COLS,
     LCD_EVENT_HOLD_MS,
@@ -143,7 +145,13 @@ def initialize_hardware():
         hardware["echo"] = machine.Pin(ULTRASONIC_ECHO_PIN, machine.Pin.IN)
 
     if not hardware["slot_pins"]:
-        hardware["slot_pins"] = [machine.Pin(pin, machine.Pin.IN) for pin in IR_SLOT_PINS[:MAX_SLOTS]]
+        slot_mode = machine.Pin.PULL_UP if IR_SENSOR_USE_PULLUP else None
+        hardware["slot_pins"] = []
+        for pin in IR_SLOT_PINS[:MAX_SLOTS]:
+            if slot_mode is None:
+                hardware["slot_pins"].append(machine.Pin(pin, machine.Pin.IN))
+            else:
+                hardware["slot_pins"].append(machine.Pin(pin, machine.Pin.IN, slot_mode))
 
     if hardware["dht"] is None and dht is not None:
         hardware["dht"] = dht.DHT11(machine.Pin(DHT11_PIN))
@@ -252,10 +260,11 @@ def read_slot_statuses():
     initialize_hardware()
     statuses = []
     for pin in hardware["slot_pins"]:
-        if pin.value() == 0:
-            statuses.append("FULL")
+        pin_value = pin.value()
+        if IR_SENSOR_ACTIVE_LOW:
+            statuses.append("FULL" if pin_value == 0 else "OPEN")
         else:
-            statuses.append("OPEN")
+            statuses.append("FULL" if pin_value == 1 else "OPEN")
     return statuses
 
 
