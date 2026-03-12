@@ -46,8 +46,8 @@ gas_sensor.atten(ADC.ATTN_11DB)
 i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)
 print("I2C devices (bus0):", [hex(addr) for addr in i2c.scan()])
 
-# Dedicated bus for MLX90614 on GPIO16 (SCL) / GPIO17 (SDA)
-i2c_mlx = I2C(1, scl=Pin(16), sda=Pin(17), freq=50000)
+# Dedicated bus for MLX90614 on GPIO22 (SCL) / GPIO21 (SDA)
+i2c_mlx = I2C(1, scl=Pin(22), sda=Pin(21), freq=50000)
 print("I2C devices (mlx bus):", [hex(addr) for addr in i2c_mlx.scan()])
 
 bmp280 = None
