@@ -19,7 +19,8 @@ except ImportError:
     MLX90614 = None
 
 # ---------------- WIFI ----------------
-SSID = "AUPP Wifi"
+WIFI_SSID = "Robotic WIFI"
+WIFI_PASS = "rbtWIFI@2025"
 
 # Node-RED endpoint
 NODE_RED_URL = "http://10.10.62.226:1880/gas"
@@ -27,7 +28,7 @@ NODE_RED_URL = "http://10.10.62.226:1880/gas"
 # connect wifi
 wifi = network.WLAN(network.STA_IF)
 wifi.active(True)
-wifi.connect(SSID)
+wifi.connect(WIFI_SSID, WIFI_PASS)
 
 print("Connecting to WiFi...")
 
