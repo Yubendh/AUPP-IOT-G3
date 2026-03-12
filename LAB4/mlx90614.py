@@ -19,3 +19,4 @@ class MLX90614:
 
     def read_object_temp(self):
         return self.read_temp(0x07)
+

@@ -12,6 +12,7 @@ Explaning system logic
 - Resolution: user moving average
 - Explaination: everytime ESP32 takes a reading, it stores that number into a list, which it holds the last 5 readings. Afterward, the code find the average of the readings and printed to the screen.
 - Finally, it sends to Node-RED
+![task1](task1.png)
 <img width="794" height="1616" alt="task1_flow" src="https://github.com/user-attachments/assets/9065d938-1b15-4b99-8d19-c8cad3269619" />
 
 ## Task 2 - Gas risk clarification
@@ -19,12 +20,14 @@ Explaning system logic
 - The code checks if the average number below 2100, if yes it will display "SAFE"
 - If the average number is below 2600, it displays "WARNING"
 - If it's more than 2600 then it will display "DANGER"
+![task2](task2.png)
 <img width="691" height="1627" alt="task2_flow" src="https://github.com/user-attachments/assets/0867e70c-80b2-48ea-b831-68ed259f3724" />
 
 ## Task 3 - Fever Detection
 - After the temperature is read, the code checks a single condition -> Is the temperature 32.5 degree celcius or higher?
 - If yes, fever_flag is set to 1, which means fever is detected
 - If the temperature is below that threshold, fever_flag is set to 0, meaning the temperature is normal.
+![task3](task3.png)
 <img width="885" height="1618" alt="task3_flow" src="https://github.com/user-attachments/assets/28ed0e77-8d46-4c79-b084-0cfc02b2b2ca" />
 
 ## Task 4 - Pressure, Altitude, and Full Data Transmission
@@ -35,3 +38,14 @@ Explaning system logic
 - That message is sent over Wi-Fi to Node-RED every 5 seconds using HTTP POST
 - Node-RED saves the data into InfluxDB, and Grafana reads it to display live graphs and status panels on the dashboard
 <img width="1214" height="1915" alt="task4_flow" src="https://github.com/user-attachments/assets/795eb60e-7ff7-4639-93be-a5876ea5252f" />
+
+## Short Demonstration
+https://youtu.be/6nTgdIF4t08
+
+## Extra Screenshots
+# Wiring Photo
+![wiring](photo_2026-03-13%2000.44.22.jpeg)
+# InfluxDB Data
+![influxdb](influxdb_screenshot.png)
+# Grafana Dashboard
+![grafana](grafana_dashboard.png)
