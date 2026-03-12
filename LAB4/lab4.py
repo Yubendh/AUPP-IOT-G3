@@ -19,7 +19,8 @@ except ImportError:
     MLX90614 = None
 
 # ---------------- WIFI ----------------
-SSID = "AUPP Wifi"
+WIFI_SSID = "Robotic WIFI"
+WIFI_PASS = "rbtWIFI@2025"
 
 # Node-RED endpoint
 NODE_RED_URL = "http://10.10.62.226:1880/gas"
@@ -27,7 +28,7 @@ NODE_RED_URL = "http://10.10.62.226:1880/gas"
 # connect wifi
 wifi = network.WLAN(network.STA_IF)
 wifi.active(True)
-wifi.connect(SSID)
+wifi.connect(WIFI_SSID, WIFI_PASS)
 
 print("Connecting to WiFi...")
 
@@ -41,9 +42,14 @@ print("Connected:", wifi.ifconfig())
 gas_sensor = ADC(Pin(33))
 gas_sensor.atten(ADC.ATTN_11DB)
 
-# ---------------- I2C SENSORS (SHARED BUS) ----------------
-# BMP280 + DS3231 + MLX90614 all on GPIO22 / GPIO21
+# ---------------- I2C SENSORS ----------------
+# Shared bus for BMP280 + DS3231 on GPIO22 / GPIO21
 i2c = I2C(0, scl=Pin(22), sda=Pin(21), freq=100000)
+print("I2C devices (bus0):", [hex(addr) for addr in i2c.scan()])
+
+# Dedicated bus for MLX90614 on GPIO22 (SCL) / GPIO21 (SDA)
+i2c_mlx = I2C(1, scl=Pin(22), sda=Pin(21), freq=50000)
+print("I2C devices (mlx bus):", [hex(addr) for addr in i2c_mlx.scan()])
 
 bmp280 = None
 if BMP280 is not None:
@@ -62,9 +68,18 @@ if DS3231 is not None:
 mlx = None
 if MLX90614 is not None:
     try:
-        mlx = MLX90614(i2c)
+        mlx = MLX90614(i2c_mlx)
     except Exception:
         mlx = None
+
+# ---------------- FEVER LOGIC CONFIG ----------------
+FEVER_TEMP_C = 37.5
+BODY_TEMP_MIN_C = 30.0
+BODY_TEMP_MAX_C = 45.0
+MLX_READ_RETRIES = 3
+MLX_I2C_ADDR = 0x5A
+BOOT_TEMP_SAMPLE_COUNT = 5
+BOOT_TEMP_MAX_SPREAD_C = 2.0
 
 readings = []
 
@@ -73,10 +88,52 @@ def read_body_temp_c():
     if mlx is None:
         return None
 
-    try:
-        return float(mlx.read_object_temp())
-    except Exception:
-        return None
+    for _ in range(MLX_READ_RETRIES):
+        try:
+            temp = float(mlx.read_object_temp())
+            if BODY_TEMP_MIN_C <= temp <= BODY_TEMP_MAX_C:
+                return temp
+        except Exception:
+            pass
+        time.sleep_ms(50)
+
+    return None
+
+
+def check_mlx_on_boot():
+    print("MLX90614 boot check...")
+
+    devices = i2c_mlx.scan()
+    if MLX_I2C_ADDR not in devices:
+        print("MLX90614: FAIL - address 0x5a not found on I2C bus")
+        return False
+
+    if mlx is None:
+        print("MLX90614: FAIL - driver init failed")
+        return False
+
+    samples = []
+    for _ in range(BOOT_TEMP_SAMPLE_COUNT):
+        try:
+            t = float(mlx.read_object_temp())
+            if BODY_TEMP_MIN_C <= t <= BODY_TEMP_MAX_C:
+                samples.append(t)
+        except Exception:
+            pass
+        time.sleep_ms(100)
+
+    if len(samples) < 3:
+        print("MLX90614: FAIL - not enough valid samples:", samples)
+        return False
+
+    spread = max(samples) - min(samples)
+    if spread > BOOT_TEMP_MAX_SPREAD_C:
+        print("MLX90614: FAIL - unstable samples:", samples)
+        return False
+
+    avg = sum(samples) / len(samples)
+    print("MLX90614: PASS - stable reading {:.2f}C, samples={}".format(avg, samples))
+    return True
 
 
 def read_pressure_hpa():
@@ -115,6 +172,9 @@ def read_ds3231_timestamp():
         year, month, day, hour, minute, second
     )
 
+
+mlx_ok = check_mlx_on_boot()
+
 # ---------------- MAIN LOOP ----------------
 while True:
 
@@ -142,8 +202,8 @@ while True:
     print("Risk Level:", risk_level)
 
     # ---------------- TASK 3 : FEVER DETECTION ----------------
-    body_temp = read_body_temp_c()
-    fever_flag = 1 if (body_temp is not None and body_temp >= 32.5) else 0
+    body_temp = read_body_temp_c() if mlx_ok else None
+    fever_flag = 1 if (body_temp is not None and body_temp >= FEVER_TEMP_C) else 0
 
     print("Body Temp:", body_temp, "C | Fever Flag:", fever_flag)
 
