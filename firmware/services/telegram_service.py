@@ -48,6 +48,10 @@ def initialize_update_cursor():
         return False
 
     gc.collect()
+    try:
+        print("TG mem before init:", gc.mem_free())
+    except AttributeError:
+        pass
     response = None
     lock_acquired = False
     try:
@@ -71,9 +75,17 @@ def initialize_update_cursor():
 
         updates_initialized = True
         poll_backoff_seconds = 0
-        print("Telegram cursor initialized at update_id:", last_update_id)
+        try:
+            print("TG mem after init:", gc.mem_free())
+        except AttributeError:
+            pass
+        print("Telegram cursor initialized:", last_update_id)
         return True
     except Exception as exc:
+        try:
+            print("TG mem init fail:", gc.mem_free())
+        except AttributeError:
+            pass
         print("Telegram init cursor error:", exc)
         poll_backoff_seconds = min(10, poll_backoff_seconds + 1)
         return False
@@ -138,20 +150,16 @@ def send_message(text):
 
 def format_status(status_response):
     if not status_response.get("ok"):
-        return "System error: unable to fetch status."
+        return "Status error."
 
     data = status_response.get("data", {})
     return (
-        "System Status\n"
-        "service: {service}\n"
-        "system_status: {system_status}\n"
-        "gate_status: {gate_status}\n"
-        "gate_angle: {gate_angle}\n"
-        "slots: {available_slots}\n"
-        "temp: {temp_c} C\n"
-        "humidity: {humidity_pct} %"
+        "Status\n"
+        "gate:{gate_status} {gate_angle}\n"
+        "slots:{available_slots}\n"
+        "temp:{temp_c}C hum:{humidity_pct}%\n"
+        "sys:{system_status}"
     ).format(
-        service=data.get("service", "unknown"),
         system_status=data.get("system_status", "unknown"),
         gate_status=data.get("gate_status", "unknown"),
         gate_angle=data.get("gate_angle", "unknown"),
@@ -163,16 +171,16 @@ def format_status(status_response):
 
 def format_check_response(response):
     if not response.get("ok"):
-        return "Command failed: {}".format(response.get("error", "unknown_error"))
-    return response.get("message", "CHECK: command acknowledged.")
+        return "Failed: {}".format(response.get("error", "unknown_error"))
+    return response.get("message", "OK")
 
 
 def format_slots_response(response):
     if not response.get("ok"):
-        return "Command failed: {}".format(response.get("error", "unknown_error"))
+        return "Failed: {}".format(response.get("error", "unknown_error"))
 
     data = response.get("data", {})
-    return "Available slots: {}\nSlots: {}".format(
+    return "Slots:{}\n{}".format(
         data.get("available_slots", "unknown"),
         ", ".join(data.get("slots", [])),
     )
@@ -180,10 +188,10 @@ def format_slots_response(response):
 
 def format_temperature_response(response):
     if not response.get("ok"):
-        return "Command failed: {}".format(response.get("error", "unknown_error"))
+        return "Failed: {}".format(response.get("error", "unknown_error"))
 
     data = response.get("data", {})
-    return "Temperature: {} C\nHumidity: {} %".format(
+    return "Temp:{}C\nHum:{}%".format(
         data.get("temp_c", "unknown"),
         data.get("humidity_pct", "unknown"),
     )
@@ -210,13 +218,13 @@ def process_command_text(command_text):
     open_params = parse_angle_command(command_text, "/open")
     if open_params is not None:
         if open_params == "invalid_angle":
-            return "Invalid open angle. Use /open or /open <0-180>."
+            return "Bad open angle."
         return format_check_response(handle_command("open_gate", source="telegram", params=open_params))
 
     close_params = parse_angle_command(command_text, "/close")
     if close_params is not None:
         if close_params == "invalid_angle":
-            return "Invalid close angle. Use /close or /close <0-180>."
+            return "Bad close angle."
         return format_check_response(handle_command("close_gate", source="telegram", params=close_params))
 
     if command_text == "/slots":
@@ -229,7 +237,7 @@ def process_command_text(command_text):
         return format_check_response(handle_command("light_off", source="telegram"))
     if command_text == "/test":
         return "Test"
-    return "Unsupported command. Use /status, /open, /open <0-180>, /close, /close <0-180>, /slots, /temp, /light_on, /light_off."
+    return "Bad command."
 
 
 def poll_updates_once():
@@ -288,8 +296,6 @@ def poll_updates_once():
         except Exception as exc:
             print("Telegram command handler error:", exc)
     return True
-
-
 def run_bot_loop():
     while True:
         poll_updates_once()
