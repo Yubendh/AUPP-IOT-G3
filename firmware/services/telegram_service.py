@@ -5,7 +5,6 @@ import time
 import urequests
 import gc
 import __main__
-import sys
 
 from config import (
     TELEGRAM_BOT_TOKEN,
@@ -30,8 +29,6 @@ wifi = network.WLAN(network.STA_IF)
 wifi.active(True)
 last_update_id = 0
 poll_backoff_seconds = 0
-last_wifi_log_ms = 0
-last_heartbeat_ms = 0
 updates_initialized = False
 
 
@@ -50,6 +47,7 @@ def initialize_update_cursor():
         poll_backoff_seconds = min(10, poll_backoff_seconds + 1)
         return False
 
+    gc.collect()
     response = None
     lock_acquired = False
     try:
@@ -58,9 +56,7 @@ def initialize_update_cursor():
             lock_acquired = True
 
         # offset=-1 discards backlog and keeps only the newest update cursor.
-        response = urequests.get(
-            "{}?offset=-1&limit=1&allowed_updates=%5B%22message%22%5D".format(URL_GET_UPDATES)
-        )
+        response = urequests.get("{}?offset=-1&limit=1".format(URL_GET_UPDATES))
         if response.status_code != 200:
             poll_backoff_seconds = min(10, poll_backoff_seconds + 1)
             return False
@@ -109,11 +105,6 @@ def ensure_wifi():
 
     for _ in range(WIFI_CONNECT_RETRIES):
         if wifi.isconnected():
-            global last_wifi_log_ms
-            now = now_ms()
-            if time.ticks_diff(now, last_wifi_log_ms) > 30000:
-                print("Telegram Wi-Fi connected:", wifi.ifconfig()[0])
-                last_wifi_log_ms = now
             return True
         time.sleep(1)
     return False
@@ -261,9 +252,7 @@ def poll_updates_once():
             lock_acquired = True
         # Keep payload small for low-memory boards.
         response = urequests.get(
-            "{}?offset={}&limit=1&allowed_updates=%5B%22message%22%5D".format(
-                URL_GET_UPDATES, last_update_id + 1
-            )
+            "{}?offset={}&limit=1".format(URL_GET_UPDATES, last_update_id + 1)
         )
         if response.status_code != 200:
             poll_backoff_seconds = min(10, poll_backoff_seconds + 1)
@@ -302,13 +291,7 @@ def poll_updates_once():
 
 
 def run_bot_loop():
-    global last_heartbeat_ms
-    print("Starting Telegram loop...")
     while True:
-        now = now_ms()
-        if time.ticks_diff(now, last_heartbeat_ms) > 30000:
-            print("Telegram loop alive.")
-            last_heartbeat_ms = now
         poll_updates_once()
         delay = TELEGRAM_POLL_SECONDS + poll_backoff_seconds
         time.sleep(delay)

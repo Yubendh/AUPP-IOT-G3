@@ -2,6 +2,7 @@
 
 import sys
 import time
+import gc
 
 try:
     import _thread
@@ -23,6 +24,8 @@ from config import (
     ENABLE_TELEGRAM_SERVICE,
     ENABLE_WEBSERVER_SERVICE,
     ENTRY_DISTANCE_CM,
+    IR_DEBUG_ENABLED,
+    IR_DEBUG_INTERVAL_MS,
     IR_SENSOR_ACTIVE_LOW,
     IR_SENSOR_USE_PULLUP,
     IR_SLOT_PINS,
@@ -42,6 +45,7 @@ from config import (
     TM1637_CLK_PIN,
     TM1637_DIO_PIN,
     ULTRASONIC_ECHO_PIN,
+    ULTRASONIC_MAX_DETECTION_CM,
     ULTRASONIC_SECOND_ECHO_PIN,
     ULTRASONIC_SECOND_ENABLED,
     ULTRASONIC_SECOND_TRIG_PIN,
@@ -89,6 +93,7 @@ state = {
     "entry_distance_cm": None,
     "entry_distance_cm_secondary": None,
     "entry_detected": False,
+    "active_entry_sensor": None,
     "last_update": 0,
 }
 
@@ -100,7 +105,7 @@ lcd_override = {
 }
 
 auto_gate_close_deadline = None
-previous_entry_detected = False
+last_ir_debug_ms = None
 network_lock = None
 
 if _thread is not None:
@@ -269,7 +274,10 @@ def read_ultrasonic_distance_cm():
     if duration < 0:
         return None
 
-    return (duration * 0.0343) / 2
+    distance_cm = (duration * 0.0343) / 2
+    if distance_cm > ULTRASONIC_MAX_DETECTION_CM:
+        return None
+    return distance_cm
 
 
 def read_ultrasonic_distance_cm_second():
@@ -308,7 +316,36 @@ def read_ultrasonic_distance_cm_second():
     if duration < 0:
         return None
 
-    return (duration * 0.0343) / 2
+    distance_cm = (duration * 0.0343) / 2
+    if distance_cm > ULTRASONIC_MAX_DETECTION_CM:
+        return None
+    return distance_cm
+
+
+def get_detected_sensor(primary_detected, secondary_detected):
+    active_sensor = state["active_entry_sensor"]
+
+    # Hold ownership on the current sensor until it clears so the servo
+    # only responds to one ultrasonic source at a time.
+    if active_sensor == "primary":
+        if primary_detected:
+            return "primary"
+        if secondary_detected:
+            return "secondary"
+        return None
+
+    if active_sensor == "secondary":
+        if secondary_detected:
+            return "secondary"
+        if primary_detected:
+            return "primary"
+        return None
+
+    if primary_detected:
+        return "primary"
+    if secondary_detected:
+        return "secondary"
+    return None
 
 
 def read_slot_statuses():
@@ -321,6 +358,46 @@ def read_slot_statuses():
         else:
             statuses.append("FULL" if pin_value == 1 else "OPEN")
     return statuses
+
+
+def maybe_log_ir_debug():
+    global last_ir_debug_ms
+
+    if not IR_DEBUG_ENABLED:
+        return
+
+    current_ms = now_ms()
+    if (
+        last_ir_debug_ms is not None
+        and time.ticks_diff(current_ms, last_ir_debug_ms) < IR_DEBUG_INTERVAL_MS
+    ):
+        return
+
+    last_ir_debug_ms = current_ms
+    sensor_parts = []
+    for index, pin in enumerate(hardware["slot_pins"], 1):
+        raw_value = pin.value()
+        if IR_SENSOR_ACTIVE_LOW:
+            state_label = "DETECTED" if raw_value == 0 else "CLEAR"
+        else:
+            state_label = "DETECTED" if raw_value == 1 else "CLEAR"
+        sensor_parts.append("IR{} raw={} state={}".format(index, raw_value, state_label))
+
+    if state["entry_distance_cm"] is None:
+        sensor_parts.append("US1=none")
+    else:
+        sensor_parts.append("US1={:.1f}cm".format(state["entry_distance_cm"]))
+
+    if state["entry_distance_cm_secondary"] is None:
+        sensor_parts.append("US2=none")
+    else:
+        sensor_parts.append("US2={:.1f}cm".format(state["entry_distance_cm_secondary"]))
+    sensor_parts.append("ENTRY={}".format("yes" if state["entry_detected"] else "no"))
+    sensor_parts.append("ACTIVE={}".format(state["active_entry_sensor"] or "none"))
+    sensor_parts.append("SLOTS={}".format(state["available_slots"]))
+    sensor_parts.append("GATE={}".format(state["gate_status"]))
+
+    print("Sensor debug [{}]".format(" | ".join(sensor_parts)))
 
 
 def read_dht_state():
@@ -340,7 +417,6 @@ def set_gate_position(target_angle, label, source):
     bounded_angle = clamp_angle(target_angle)
     servo_motor = get_servo()
     if servo_motor is None:
-        print("Servo debug [{}]: hardware unavailable, requested {} at {} degrees".format(source, label, bounded_angle))
         state["gate_status"] = label
         state["gate_angle"] = bounded_angle
         return False
@@ -348,7 +424,6 @@ def set_gate_position(target_angle, label, source):
     servo_motor.duty(angle_to_duty(bounded_angle))
     state["gate_status"] = label
     state["gate_angle"] = bounded_angle
-    print("Servo debug [{}]: {} gate to {} degrees".format(source, label.lower(), bounded_angle))
     set_lcd_override("Gate {}".format(label), "Src:{} {}deg".format(source[:6], bounded_angle))
     return True
 
@@ -367,7 +442,8 @@ def update_state_from_sensors():
     secondary_detected = (
         entry_distance_secondary is not None and entry_distance_secondary <= ENTRY_DISTANCE_CM
     )
-    entry_detected = primary_detected or secondary_detected
+    active_entry_sensor = get_detected_sensor(primary_detected, secondary_detected)
+    entry_detected = active_entry_sensor is not None
 
     state["slot_statuses"] = slot_statuses
     state["available_slots"] = available_slots
@@ -376,6 +452,7 @@ def update_state_from_sensors():
     state["entry_distance_cm"] = entry_distance
     state["entry_distance_cm_secondary"] = entry_distance_secondary
     state["entry_detected"] = entry_detected
+    state["active_entry_sensor"] = active_entry_sensor
 
     if available_slots == 0:
         state["system_status"] = "full"
@@ -390,27 +467,32 @@ def update_state_from_sensors():
 
 
 def handle_auto_gate_logic():
-    global auto_gate_close_deadline, previous_entry_detected
+    global auto_gate_close_deadline
 
     current_entry_detected = state["entry_detected"]
-    rising_edge = current_entry_detected and not previous_entry_detected
 
-    if rising_edge:
+    if current_entry_detected:
         if state["available_slots"] > 0:
-            set_gate_position(SERVO_OPEN_ANGLE, "OPEN", "auto")
+            if state["gate_status"] != "OPEN":
+                set_gate_position(SERVO_OPEN_ANGLE, "OPEN", "auto")
             auto_gate_close_deadline = time.ticks_add(now_ms(), AUTO_GATE_OPEN_MS)
         else:
-            set_gate_position(SERVO_CLOSE_ANGLE, "CLOSED", "auto")
+            if state["gate_status"] != "CLOSED":
+                set_gate_position(SERVO_CLOSE_ANGLE, "CLOSED", "auto")
+            auto_gate_close_deadline = None
             set_lcd_override("Parking Full", "Gate remains shut")
 
-    if auto_gate_close_deadline is not None and time.ticks_diff(now_ms(), auto_gate_close_deadline) >= 0:
+    if (
+        not current_entry_detected
+        and auto_gate_close_deadline is not None
+        and time.ticks_diff(now_ms(), auto_gate_close_deadline) >= 0
+    ):
         set_gate_position(SERVO_CLOSE_ANGLE, "CLOSED", "auto")
         auto_gate_close_deadline = None
 
-    previous_entry_detected = current_entry_detected
-
 
 def refresh_outputs():
+    maybe_log_ir_debug()
     refresh_tm1637()
     refresh_lcd()
 
@@ -430,6 +512,7 @@ def get_system_output():
         "entry_distance_cm": state["entry_distance_cm"],
         "entry_distance_cm_secondary": state["entry_distance_cm_secondary"],
         "entry_detected": state["entry_detected"],
+        "active_entry_sensor": state["active_entry_sensor"],
         "last_update": state["last_update"],
     }
 
@@ -551,30 +634,20 @@ def run_system_loop():
 
 def run():
     """Start enabled service loops and the shared controller loop."""
-    service_starters = []
+    service_specs = []
 
-    if ENABLE_WEBSERVER_SERVICE:
-        try:
-            from services.webserver_service import run_webserver_loop
-        except ImportError:
-            from webserver_service import run_webserver_loop
-        service_starters.append(("webserver", run_webserver_loop))
+    # Start Telegram first so its TLS session has the best chance of fitting
+    # on low-memory boards before other network services are imported.
+    if ENABLE_TELEGRAM_SERVICE:
+        service_specs.append(("telegram", "telegram_service", "run_bot_loop"))
 
     if ENABLE_BLYNK_SERVICE:
-        try:
-            from services.blynk_service import run_blynk_loop
-        except ImportError:
-            from blynk_service import run_blynk_loop
-        service_starters.append(("blynk", run_blynk_loop))
+        service_specs.append(("blynk", "blynk_service", "run_blynk_loop"))
 
-    if ENABLE_TELEGRAM_SERVICE:
-        try:
-            from services.telegram_service import run_bot_loop
-        except ImportError:
-            from telegram_service import run_bot_loop
-        service_starters.append(("telegram", run_bot_loop))
+    if ENABLE_WEBSERVER_SERVICE:
+        service_specs.append(("webserver", "webserver_service", "run_webserver_loop"))
 
-    if not service_starters:
+    if not service_specs:
         print("No network services enabled. Running controller loop only.")
         run_system_loop()
         return
@@ -584,9 +657,53 @@ def run():
         run_system_loop()
         return
 
-    for service_name, service_runner in service_starters:
+    def start_service_thread(module_name, runner_name):
+        try:
+            try:
+                module = __import__("services." + module_name, None, None, (runner_name,))
+            except ImportError:
+                module = __import__(module_name, None, None, (runner_name,))
+            getattr(module, runner_name)()
+        except Exception as exc:
+            print("Service bootstrap error [{}]:".format(module_name), exc)
+            try:
+                sys.print_exception(exc)
+            except Exception:
+                pass
+
+    def initialize_telegram_service():
+        try:
+            try:
+                module = __import__("services.telegram_service", None, None, ("initialize_update_cursor",))
+            except ImportError:
+                module = __import__("telegram_service", None, None, ("initialize_update_cursor",))
+
+            initializer = getattr(module, "initialize_update_cursor", None)
+            if initializer is None:
+                return True
+
+            for _ in range(3):
+                gc.collect()
+                if initializer():
+                    return True
+                time.sleep_ms(500)
+            return False
+        except Exception as exc:
+            print("Telegram pre-init error:", exc)
+            try:
+                sys.print_exception(exc)
+            except Exception:
+                pass
+            return False
+
+    for service_name, module_name, runner_name in service_specs:
         print("Starting {} service...".format(service_name))
-        _thread.start_new_thread(service_runner, ())
+        gc.collect()
+        if service_name == "telegram" and not initialize_telegram_service():
+            print("Telegram pre-init failed; starting loop anyway.")
+        _thread.start_new_thread(start_service_thread, (module_name, runner_name))
+        time.sleep_ms(250)
+        gc.collect()
 
     print("Starting controller loop...")
     run_system_loop()
