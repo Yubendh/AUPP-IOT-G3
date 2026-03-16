@@ -27,7 +27,7 @@ Below is a more detailed explanation of the hardware and software architecture o
 
 Main System Architecture Diagram:
 
-![Main System Architecture Diagram]
+![main_system_diagram.png]
 
 The entire project runs on **MicroPython via the Thonny IDE**, which integrates sensors mentioned above and actuators with three remote interfaces:
 
@@ -79,21 +79,21 @@ Together, these platforms enable users to interact with the smart parking system
 
 Main System Flowchart:
 
-![Main System Flowchart]
+![system_architecture_flowchart.png]
 
 Telegram bot flowchart:
 
-![Telegram Bot Flowchart]
+![telegram_flowchart.png]
 
 Blynk Web/Mobile-app flowchart:
 
-![Blynk Flowchart]
+![blynk_flowchart.png]
 
-Other png here
+![bylnk_dashboard.png]
 
 Web Dashboard:
 
-png here
+![web_dashboard.png]
 
 From the flowchart:
 
