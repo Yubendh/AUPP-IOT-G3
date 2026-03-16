@@ -7,6 +7,11 @@
 - Vathan Buth Yubendh
 - Meouk Sovannarith
 
+
+## Video Link
+
+https://youtu.be/3SbwCCiBTTA
+
 ## I. Introduction
 
 This project aims to simulate a real parking lot, built with different sensors and smart features implemented for a more modern take on how parking lots should be managed. Everything is fully automated with multiple dashboards and UIs to control things like closing and opening of the gate barrier and viewing the status/outputs of various sensors.
