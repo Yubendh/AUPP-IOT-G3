@@ -1,5 +1,5 @@
 # IoT Smart Parking Mini-Project
-By Group 3
+# By Group 3
 
 ## Team Members
 - Deth Sokun Boranich
