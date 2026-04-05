@@ -43,7 +43,7 @@ AUTO_PIXEL = {
 # =========================
 # Global Runtime State
 # =========================
-mode = "AUTO"  # AUTO or MANUAL
+mode = "AUTO"
 manual_rgb = (255, 255, 255)
 manual_speed = 500
 
@@ -60,6 +60,9 @@ i2c = I2C(0, scl=Pin(I2C_SCL), sda=Pin(I2C_SDA), freq=100000)
 sensor = TCS34725(i2c)
 
 pixels = neopixel.NeoPixel(Pin(NEOPIXEL_PIN), NEOPIXEL_COUNT)
+for i in range(NEOPIXEL_COUNT):
+    pixels[i] = (0, 0, 0)
+pixels.write()
 
 motor_in1 = Pin(MOTOR_IN1_PIN, Pin.OUT)
 motor_in2 = Pin(MOTOR_IN2_PIN, Pin.OUT)
@@ -91,7 +94,9 @@ def motor_stop():
     motor_pwm.duty(0)
 
 
-def classify_color(r, g, b):
+def classify_color(r, g, b, c):
+    if c < 150:
+        return "UNKNOWN"
     if r > g and r > b:
         return "RED"
     if g > r and g > b:
@@ -142,6 +147,16 @@ def parse_query(path):
 
 def handle_http(path):
     global mode, manual_rgb, manual_speed
+
+    if path.startswith("/set_speed"):
+        params = parse_query(path)
+        try:
+            speed = int(float(params.get("speed", "500")))
+            speed = max(0, min(1023, speed))
+            manual_speed = speed
+            return "text/plain", "SPEED SET"
+        except Exception:
+            return "text/plain", "INVALID SPEED"
 
     if path.startswith("/forward"):
         mode = "MANUAL"
@@ -232,12 +247,12 @@ def serve_client(server_sock):
 def start_server():
     addr = socket.getaddrinfo("0.0.0.0", 80)[0][-1]
     server = socket.socket()
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # ADD THIS
     server.bind(addr)
     server.listen(2)
     server.settimeout(0.05)
     print("HTTP server running on", addr)
     return server
-
 
 def main():
     global last_r, last_g, last_b, last_c, last_color
@@ -245,24 +260,31 @@ def main():
     connect_wifi()
     server = start_server()
 
-    print("LAB5 started. Default mode = AUTO")
+    print("Default mode = AUTO")
+    last_scan = 0
+
     while True:
-        r, g, b, c = sensor.read_raw()
-        color_name = classify_color(r, g, b)
+        now = time.ticks_ms()
 
-        last_r = r
-        last_g = g
-        last_b = b
-        last_c = c
-        last_color = color_name
+        if time.ticks_diff(now, last_scan) >= 2000:
+            r, g, b, c = sensor.read_raw()
+            color_name = classify_color(r, g, b, c)
 
-        print("RGBC:", r, g, b, c, "=>", color_name, "Mode:", mode)
+            last_r = r
+            last_g = g
+            last_b = b
+            last_c = c
+            last_color = color_name
 
-        if mode == "AUTO":
-            apply_auto_outputs(color_name)
+            print("RGBC:", r, g, b, c, "=>", color_name, "Mode:", mode)
+            print()
+
+            if mode == "AUTO":
+                apply_auto_outputs(color_name)
+
+            last_scan = time.ticks_ms()
 
         serve_client(server)
-        time.sleep(0.2)
 
 
 main()
