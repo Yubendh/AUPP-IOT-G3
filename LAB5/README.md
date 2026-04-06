@@ -20,12 +20,10 @@ https://youtu.be/hhPX861pLvA
 ## Task 5 - MIT App Integration 
 # MIT App File
 ![app](LAB5/images&videos/photo_2026-04-06 01.50.15.jpeg)
-1[app](LAB5/images&videos/Screenshot 2026-04-06 at 01.47.34.png)
+![app](LAB5/images&videos/Screenshot 2026-04-06 at 01.47.34.png)
 
 ## DEMO Video 
 
 https://youtu.be/oJMJ_5Z71Dc
 
 ## System Flowchart
-
-
