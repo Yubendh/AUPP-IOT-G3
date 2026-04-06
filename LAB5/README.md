@@ -7,7 +7,7 @@
 
 ## Task 1 and 2 - RGB Reading & Color Classification 
 
-![task1](LAB5/images&videos/Screenshot 2026-04-06 at 01.03.34.png)
+![task1](images&videos/Screenshot%202026-04-06%20at%2001.03.34.png)
 
 ## Task 3 - NeoPixel Control
 
@@ -19,8 +19,8 @@ https://youtu.be/hhPX861pLvA
 
 ## Task 5 - MIT App Integration 
 # MIT App File
-![app](LAB5/images&videos/photo_2026-04-06 01.50.15.jpeg)
-![app](LAB5/images&videos/Screenshot 2026-04-06 at 01.47.34.png)
+![app](images&videos/photo_2026-04-06%2001.50.15.jpeg)
+![app](images&videos/Screenshot%202026-04-06%20at%2001.47.34.png)
 
 ## DEMO Video 
 
