@@ -64,4 +64,4 @@ https://youtu.be/hhPX861pLvA
 https://youtu.be/oJMJ_5Z71Dc
 
 ## System Flowchart
-![app](images&videos/system_flowchart.png)
+![flowchart](images&videos/system_flowchart.png)
