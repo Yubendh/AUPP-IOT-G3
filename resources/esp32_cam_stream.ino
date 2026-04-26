@@ -57,7 +57,7 @@ static esp_err_t stream_handler(httpd_req_t* req) {
 
     while (true) {
         fb = esp_camera_fb_get();
-        if (!fb) { res = ESP_FAIL; break; }
+        if (!fb) { delay(100); continue; }
 
         res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
         if (res == ESP_OK) {
@@ -116,16 +116,9 @@ void setup() {
     config.xclk_freq_hz = 20000000;
     config.pixel_format = PIXFORMAT_JPEG;
 
-    // Larger frames use more RAM; QVGA is plenty for gesture recognition
-    if (psramFound()) {
-        config.frame_size   = FRAMESIZE_VGA;
-        config.jpeg_quality = 12;
-        config.fb_count     = 2;
-    } else {
-        config.frame_size   = FRAMESIZE_QVGA;
-        config.jpeg_quality = 15;
-        config.fb_count     = 1;
-    }
+    config.frame_size   = FRAMESIZE_QVGA;
+    config.jpeg_quality = 12;
+    config.fb_count     = 1;
 
     if (esp_camera_init(&config) != ESP_OK) {
         Serial.println("Camera init failed");

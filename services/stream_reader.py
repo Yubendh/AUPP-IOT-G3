@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 
 
-def _mjpeg_frames(url: str, timeout: int = 5):
+def _mjpeg_frames(url: str, timeout: int = 30):
     """Read MJPEG frames from URL directly — more reliable than cv2.VideoCapture for ESP32-CAM."""
     stream = urllib.request.urlopen(url, timeout=timeout)
     buf = b""

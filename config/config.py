@@ -5,7 +5,7 @@ RESOURCES_DIR = BASE_DIR / "resources"
 MODEL_DIR     = RESOURCES_DIR / "model"
 
 # Update this IP after the ESP32-CAM connects to WiFi and reports its address
-STREAM_URL = "http://192.168.1.100:81/stream"
+STREAM_URL = "http://192.168.1.213:81/stream"
 
 MODEL_PATH     = MODEL_DIR / "gesture_mlp.keras"
 CLASSES_PATH   = MODEL_DIR / "classes.pkl"
