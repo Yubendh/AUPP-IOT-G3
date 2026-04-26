@@ -1,5 +1,6 @@
 import sys
 import time
+import threading
 import urllib.request
 from pathlib import Path
 
@@ -9,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.config import (
     CLASSES_PATH, CONFIDENCE_THRESHOLD, DEBOUNCE_FRAMES,
-    ESP32_LED_URL, LANDMARKER_PATH, MODEL_PATH, STREAM_URL,
+    ESP32_LED_URL, ESP32_SERVO_URL, LANDMARKER_PATH, MODEL_PATH, STREAM_URL,
 )
 from services.gesture_service import (
     Debouncer, GestureClassifier, HandDetector,
@@ -46,12 +47,16 @@ def _draw_hud(frame, gesture: str | None, confidence: float, fps: float) -> None
                 (10, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.45, GREY, 1, cv2.LINE_AA)
 
 
+def _post(url: str, gesture: str) -> None:
+    try:
+        urllib.request.urlopen(f"{url}/gesture?name={gesture}", timeout=2)
+    except Exception as e:
+        print(f"[ESP32 {url}] {e}")
+
 def send_gesture(gesture: str) -> None:
     print(f"[Gesture] {gesture}")
-    try:
-        urllib.request.urlopen(f"{ESP32_LED_URL}/gesture?name={gesture}", timeout=2)
-    except Exception as e:
-        print(f"[ESP32] {e}")
+    for url in (ESP32_LED_URL, ESP32_SERVO_URL):
+        threading.Thread(target=_post, args=(url, gesture), daemon=True).start()
 
 
 def run():
