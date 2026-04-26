@@ -1,5 +1,6 @@
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 import cv2
@@ -8,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.config import (
     CLASSES_PATH, CONFIDENCE_THRESHOLD, DEBOUNCE_FRAMES,
-    LANDMARKER_PATH, MODEL_PATH, STREAM_URL,
+    ESP32_LED_URL, LANDMARKER_PATH, MODEL_PATH, STREAM_URL,
 )
 from services.gesture_service import (
     Debouncer, GestureClassifier, HandDetector,
@@ -46,8 +47,11 @@ def _draw_hud(frame, gesture: str | None, confidence: float, fps: float) -> None
 
 
 def send_gesture(gesture: str) -> None:
-    """TODO: send confirmed gesture to output ESP32 via HTTP."""
     print(f"[Gesture] {gesture}")
+    try:
+        urllib.request.urlopen(f"{ESP32_LED_URL}/gesture?name={gesture}", timeout=2)
+    except Exception as e:
+        print(f"[ESP32] {e}")
 
 
 def run():

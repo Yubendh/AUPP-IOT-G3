@@ -7,6 +7,9 @@ MODEL_DIR     = RESOURCES_DIR / "model"
 # Update this IP after the ESP32-CAM connects to WiFi and reports its address
 STREAM_URL = "http://192.168.1.213:81/stream"
 
+# Update after running esp32_led.py on the ESP32 and checking its printed IP
+ESP32_LED_URL = "http://192.168.1.251"
+
 MODEL_PATH     = MODEL_DIR / "gesture_mlp.keras"
 CLASSES_PATH   = MODEL_DIR / "classes.pkl"
 LANDMARKER_PATH = MODEL_DIR / "hand_landmarker.task"
