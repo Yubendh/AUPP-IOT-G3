@@ -1,0 +1,12 @@
+CLAUDE.md
+tasks/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Model files (copy from hybrid project — too large to commit)
+resources/model/*.keras
+resources/model/*.pkl
+resources/model/*.task

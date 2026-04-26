@@ -1,0 +1,4 @@
+opencv-python>=4.8
+mediapipe>=0.10
+tensorflow>=2.13
+numpy>=1.24
