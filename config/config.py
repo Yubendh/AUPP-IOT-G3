@@ -5,13 +5,13 @@ RESOURCES_DIR = BASE_DIR / "resources"
 MODEL_DIR     = RESOURCES_DIR / "model"
 
 # Update this IP after the ESP32-CAM connects to WiFi and reports its address
-STREAM_URL = "http://192.168.1.213:81/stream"
+STREAM_URL = "http://10.30.0.252:81/stream"
 
 # Update after running esp32_led.py on the ESP32 and checking its printed IP
-ESP32_LED_URL   = "http://192.168.1.251"
+ESP32_LED_URL   = "http://10.30.0.192"
 
 # Update after running esp32_servo.py on the second ESP32
-ESP32_SERVO_URL = "http://192.168.1.144"
+ESP32_SERVO_URL = "http://10.30.0.157"
 
 MODEL_PATH     = MODEL_DIR / "gesture_mlp.keras"
 CLASSES_PATH   = MODEL_DIR / "classes.pkl"

@@ -4,61 +4,51 @@ from machine import Pin, PWM
 import time
 
 # ── Config ─────────────────────────────────────────────────────────────────────
-SSID     = "Brewie Coffee GF"
-PASSWORD = "brewie2024"
+SSID     = "Robotic WIFI"
+PASSWORD = "rbtWIFI@2025"
 
-# Servo pins
+# Servo pins: index 0 = top (pin 13), index 1 = bottom (pin 17)
 SERVO_PINS = [13, 17]
 
-# Duty values (50Hz PWM): duty(26)=0°, duty(77)=90°, duty(128)=180°
-SERVO_REST_DUTY = [77, 77]   # neutral position (90°)
-SERVO_FLIP_DUTY = [26, 26]   # flip position (0°) — adjust per physical mount
+# Set servo angles in degrees (0–180)
+ON_ANGLE_TOP    = 0
+ON_ANGLE_BOTTOM =   180
 
-FLIP_HOLD_MS = 1500   # ms to hold at flip angle before returning
-COOLDOWN_MS  = 500    # ms after returning before accepting next gesture
+OFF_ANGLE_TOP   =   180
+OFF_ANGLE_BOTTOM = 0
 
-# Which gesture triggers which servo (index 0 or 1)
-GESTURE_MAP = {
-    "open_palm":   0,
-    "closed_fist": 1,
-}
+# Delay between moving top and bottom servo (ms)
+SERVO_SEQUENCE_DELAY_MS = 300
+
+# Gestures that trigger each state
+GESTURE_ON  = "open_palm"
+GESTURE_OFF = "closed_fist"
 
 # ── Hardware ───────────────────────────────────────────────────────────────────
 servos = [PWM(Pin(p), freq=50) for p in SERVO_PINS]
 
-def set_servo(idx, duty):
-    servos[idx].duty(duty)
+def angle_to_duty(deg):
+    # Maps 0–180° to duty 26–128 (50 Hz PWM)
+    return int(26 + (deg / 180.0) * 102)
 
-# ── State machine ──────────────────────────────────────────────────────────────
-IDLE     = 0
-FLIPPING = 1   # at flip angle, waiting to return
-COOLDOWN = 2   # returned, brief cooldown before accepting again
+def set_servo(idx, deg):
+    servos[idx].duty(angle_to_duty(deg))
 
-servo_state = [IDLE, IDLE]
-servo_timer = [0, 0]
+def apply_state(top_deg, bottom_deg):
+    try:
+        print("apply_state: top", top_deg, "duty", angle_to_duty(top_deg))
+        set_servo(0, top_deg)
+        print("apply_state: top done, sleeping")
+        time.sleep_ms(SERVO_SEQUENCE_DELAY_MS)
+        print("apply_state: bottom", bottom_deg, "duty", angle_to_duty(bottom_deg))
+        set_servo(1, bottom_deg)
+        print("apply_state: done")
+    except BaseException as e:
+        print("apply_state ERROR:", e)
 
-def any_busy():
-    return any(s != IDLE for s in servo_state)
-
-def start_flip(idx):
-    set_servo(idx, SERVO_FLIP_DUTY[idx])
-    servo_state[idx] = FLIPPING
-    servo_timer[idx] = time.ticks_ms()
-    print("Servo", idx + 1, "flipping")
-
-def update_servos():
-    now = time.ticks_ms()
-    for i in range(2):
-        if servo_state[i] == FLIPPING:
-            if time.ticks_diff(now, servo_timer[i]) >= FLIP_HOLD_MS:
-                set_servo(i, SERVO_REST_DUTY[i])
-                servo_state[i] = COOLDOWN
-                servo_timer[i] = now
-                print("Servo", i + 1, "returning")
-        elif servo_state[i] == COOLDOWN:
-            if time.ticks_diff(now, servo_timer[i]) >= COOLDOWN_MS:
-                servo_state[i] = IDLE
-                print("Servo", i + 1, "ready")
+# ── State ──────────────────────────────────────────────────────────────────────
+# Track current light state so we only act on gesture changes
+current_state = None   # None = uninitialised, "on" or "off"
 
 # ── WiFi ───────────────────────────────────────────────────────────────────────
 wlan = network.WLAN(network.STA_IF)
@@ -80,15 +70,15 @@ server = socket.socket()
 server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind(("0.0.0.0", 80))
 server.listen(5)
-server.settimeout(0.05)  # short timeout so servo state updates stay responsive
+server.settimeout(0.05)
 print("Listening on http://{}".format(ip))
 
-for i in range(2):
-    set_servo(i, SERVO_REST_DUTY[i])
+# Start in OFF position
+apply_state(OFF_ANGLE_TOP, OFF_ANGLE_BOTTOM)
+current_state = "off"
+print("Initialised → OFF")
 
 while True:
-    update_servos()
-
     try:
         conn, addr = server.accept()
         try:
@@ -100,18 +90,21 @@ while True:
                         gesture = part.split("=", 1)[1]
                         break
 
-            if gesture:
-                idx = GESTURE_MAP.get(gesture)
-                if idx is not None:
-                    if not any_busy():
-                        start_flip(idx)
-                    else:
-                        print("Gesture", gesture, "ignored — servo busy")
+            if gesture == GESTURE_ON and current_state != "on":
+                print("Gesture:", gesture, "→ switching ON")
+                apply_state(ON_ANGLE_TOP, ON_ANGLE_BOTTOM)
+                current_state = "on"
+            elif gesture == GESTURE_OFF and current_state != "off":
+                print("Gesture:", gesture, "→ switching OFF")
+                apply_state(OFF_ANGLE_TOP, OFF_ANGLE_BOTTOM)
+                current_state = "off"
+            elif gesture:
+                print("Gesture:", gesture, "— no change (already", current_state + ")")
 
             conn.send("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK")
-        except:
-            pass
+        except Exception as e:
+            print("ERROR:", e)
         finally:
             conn.close()
     except OSError:
-        pass  # socket timeout — normal
+        pass  # socket timeout — normal poll cycle
