@@ -111,7 +111,7 @@ The system uses two ESP32-based modules working together through wireless commun
 
 ### Technologies Used
 - ESP32 / ESP32-CAM
-- Arduino IDE
+- Arduino IDE / Thnonny IDE / MicroPython
 - IoT Wireless Communication
 - Sensor Integration
 - Git and Github
