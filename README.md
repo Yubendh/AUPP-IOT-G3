@@ -94,6 +94,9 @@ The system uses two ESP32-based modules working together through wireless commun
 - The ESP32 board controls the servo motor and RGB LEDs based on the recognized gesture.
 - LCD display shows system status and feedback.
 
+## Camera Detection 
+
+
 ## System Flowchart
 
 ![System Flowchart](./Screenshot%202026-05-08%20at%2010.14.02.png)
