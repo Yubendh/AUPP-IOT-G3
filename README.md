@@ -96,6 +96,10 @@ The system uses two ESP32-based modules working together through wireless commun
 
 ## System Flowchart
 
+![System Flowchart](./Screenshot%202026-05-08%20at%2010.14.02.png)
+
+## Flow Description
+
 1. User performs hand gesture  
 2. ESP32-CAM captures image  
 3. Gesture recognition process starts  
