@@ -112,25 +112,15 @@ The system uses two ESP32-based modules working together through wireless commun
 ### Technologies Used
 - ESP32 / ESP32-CAM
 - Arduino IDE
-- Embedded C/C++
 - IoT Wireless Communication
 - Sensor Integration
+- Git and Github
 
 ---
 
 # V. Result Demonstration
 
-The project was successfully implemented and tested.
 
-### Demonstrated Functions
-- Accurate hand gesture detection
-- Real-time smart lighting control
-- Servo motor successfully toggled switches
-- RGB LED changed color according to gestures
-- Distance validation reduced false positives
-- Smooth communication between ESP32 boards
-
-The system demonstrated effective IoT automation and accessibility-focused interaction.
 
 ---
 
@@ -138,7 +128,7 @@ The system demonstrated effective IoT automation and accessibility-focused inter
 
 ## Challenges
 
-During development, several technical challenges were encountered:
+During development, our group encountered several technical challenges:
 
 ### Gesture Recognition Accuracy
 - Different lighting conditions affected camera detection
@@ -152,11 +142,11 @@ During development, several technical challenges were encountered:
 
 ## Future Improvements
 
-Several features can be added in the future to improve the system:
+Several features can be added in the future to improve the system which are detailed below: 
 
 ### Expanded Gesture Library
 - Add more gesture commands
-- Support additional smart device controls
+- Support additional smart device controls(more actions, etc)
 
 ### Website Integration
 - Enable remote monitoring and control
