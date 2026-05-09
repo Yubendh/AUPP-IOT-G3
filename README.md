@@ -14,7 +14,7 @@
 1. [Project Overview](#i-project-overview)  
 2. [Problem and Proposed Solution](#ii-problem-and-proposed-solution)  
 3. [Components](#iii-components)  
-4. [Technical Approach](#iv-technical-approach)  
+4. [Technical Approach/ESP32-CameraUsage](#iv-technical-approach)  
 5. [Result Demonstration](#v-result-demonstration)  
 6. [Challenges and Future Improvements](#vi-challenges-and-future-improvements)  
 
@@ -96,6 +96,11 @@ The system uses two ESP32-based modules working together through wireless commun
 
 ## Camera Detection 
 
+* MediaPipe detects the hand and extracts **21 landmarks** (x, y, z), producing **63 coordinates** per frame
+* Coordinates are **normalized** by subtracting the wrist position (centering the hand at the origin) and dividing by the distance to the middle knuckle (removing hand size variance)
+* Normalized coordinates are fed into an **MLP (Multi-Layer Perceptron)** classifier, which outputs a confidence probability for each gesture class
+* A gesture is only recognized if confidence exceeds **85%** — otherwise it returns *unknown*
+* **Debouncing** is applied to the output: a gesture must be consistently detected for **3+ consecutive frames** before a command is triggered, preventing flickering or false inputs
 
 ## System Flowchart
 
